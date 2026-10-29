@@ -34,10 +34,22 @@ re-mounting it read-only, and dropping root privileges.
 | Transfers    | `LIST`, `NLST`, `RETR`                                           |
 | Data setup   | `PORT`, `EPRT`, `PASV`, `EPSV` (passive only when enabled)       |
 
+## Project layout
+
+```text
+cmd/rftp/
+├── main.go            # Entry point: flag parsing, hardening sequence, signals
+├── config/            # YAML config parsing and validation
+├── ftp/               # FTP protocol constants, command parser, types
+├── logger/            # Leveled logging (info/debug→stdout, warn/error→stderr)
+├── security/          # Privilege drop, chroot, read-only mount (Linux)
+└── server/            # Listener, server lifecycle, sessions, commands, passive ports
+```
+
 ## Building
 
 ```sh
-go build -o anonftp .
+go build -o rftp ./cmd/rftp
 go vet ./...
 go test ./...
 ```
@@ -45,7 +57,7 @@ go test ./...
 ## Running
 
 ```sh
-sudo ./anonftp -config config.example.yaml
+sudo ./rftp -config config.example.yaml
 ```
 
 Running as root is recommended: it enables chroot, the read-only re-mount and
@@ -95,11 +107,11 @@ traversal, so the served directory is never modified.
 
 ```ini
 [Unit]
-Description=anonftp - read-only anonymous FTP server
+Description=rftp - read-only anonymous FTP server
 After=network.target
 
 [Service]
-ExecStart=/usr/local/bin/anonftp -config /etc/anonftp/config.yaml
+ExecStart=/usr/local/bin/rftp -config /etc/rftp/config.yaml
 User=root
 AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_SYS_CHROOT
 NoNewPrivileges=true

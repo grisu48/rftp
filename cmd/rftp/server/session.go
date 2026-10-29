@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"anonftp/ftp"
-	"anonftp/logger"
+	"anonftp/cmd/rftp/ftp"
+	"anonftp/cmd/rftp/logger"
 )
 
 const (

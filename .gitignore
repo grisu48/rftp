@@ -1,5 +1,5 @@
 # Built binary
-/anonftp
+/rftp
 
 # Local configuration (never commit real configs)
 /config.yaml

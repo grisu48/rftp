@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"anonftp/config"
-	"anonftp/logger"
+	"anonftp/cmd/rftp/config"
+	"anonftp/cmd/rftp/logger"
 )
 
 func TestMain(m *testing.M) {

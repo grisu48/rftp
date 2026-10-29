@@ -1,4 +1,4 @@
-// Command anonftp is a minimal, security-focused, read-only anonymous FTP
+// Command rftp is a minimal, security-focused, read-only anonymous FTP
 // server. It serves a single directory over plain FTP with dual-stack
 // IPv4/IPv6 support, dropping privileges and chrooting when run as root.
 package main
@@ -10,10 +10,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	"anonftp/config"
-	"anonftp/logger"
-	"anonftp/security"
-	"anonftp/server"
+	"anonftp/cmd/rftp/config"
+	"anonftp/cmd/rftp/logger"
+	"anonftp/cmd/rftp/security"
+	"anonftp/cmd/rftp/server"
 )
 
 func main() {

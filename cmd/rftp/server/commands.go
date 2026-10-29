@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"strings"
 
-	"anonftp/ftp"
-	"anonftp/logger"
+	"anonftp/cmd/rftp/ftp"
+	"anonftp/cmd/rftp/logger"
 )
 
 // preLoginCommands may be used before USER/PASS completes.

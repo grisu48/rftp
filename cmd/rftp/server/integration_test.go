@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"anonftp/config"
+	"anonftp/cmd/rftp/config"
 )
 
 // --- Authentication (spec: anonymous-only) -----------------------------------

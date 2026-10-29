@@ -1,5 +1,5 @@
-# Example configuration for anonftp, a read-only anonymous FTP server.
-# Start with: ./anonftp -config config.example.yaml
+# Example configuration for rftp, a read-only anonymous FTP server.
+# Start with: ./rftp -config config.example.yaml
 
 # Server settings
 listen_addr: ":21"          # Listen address; a wildcard address gives dual-stack IPv4/IPv6

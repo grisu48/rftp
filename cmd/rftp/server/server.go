@@ -5,8 +5,8 @@ import (
 	"net"
 	"sync"
 
-	"anonftp/config"
-	"anonftp/logger"
+	"anonftp/cmd/rftp/config"
+	"anonftp/cmd/rftp/logger"
 )
 
 // Server is the FTP server: it owns the control listener, the passive

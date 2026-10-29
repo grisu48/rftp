@@ -123,22 +123,25 @@ log_level: info             # debug, info, warn, error
 ### Decision: Directory structure
 ```
 /
-├── main.go                 # Entry point, flag parsing
-├── config/
-│   └── config.go           # YAML config parsing
-├── server/
-│   ├── server.go           # FTP server lifecycle
-│   ├── listener.go         # TCP listener (dual-stack)
-│   ├── session.go          # Per-connection session handling
-│   ├── commands.go         # FTP command handlers
-│   └── passive.go          # Passive mode port management
-├── security/
-│   ├── privileges.go       # Privilege dropping
-│   ├── chroot.go           # Chroot handling
-│   └── mount.go            # Read-only mount
-└── ftp/
-    ├── protocol.go         # FTP protocol constants and helpers
-    └── types.go            # Data structures
+└── cmd/rftp/
+    ├── main.go             # Entry point, flag parsing
+    ├── config/
+    │   └── config.go       # YAML config parsing
+    ├── logger/
+    │   └── logger.go       # Leveled logging (stdout/stderr)
+    ├── server/
+    │   ├── server.go       # FTP server lifecycle
+    │   ├── listener.go     # TCP listener (dual-stack)
+    │   ├── session.go      # Per-connection session handling
+    │   ├── commands.go     # FTP command handlers
+    │   └── passive.go      # Passive mode port management
+    ├── security/
+    │   ├── privileges.go   # Privilege dropping
+    │   ├── chroot.go       # Chroot handling
+    │   └── mount.go        # Read-only mount
+    └── ftp/
+        ├── protocol.go     # FTP protocol constants and helpers
+        └── types.go        # Data structures
 ```
 
 ## Risks / Trade-offs
