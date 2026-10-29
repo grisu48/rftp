@@ -23,9 +23,10 @@ A minimal, security-focused, read-only anonymous FTP server written in Go. The s
 ### Security Requirements
 - **MUST** drop privileges after binding to port
 - **MUST** chroot into the served directory when running as root
-- **MUST** re-mount served directory as read-only when possible
+- **MUST** re-mount the served directory as read-only when configured
 - **MUST** reject all authentication except anonymous
 - **MUST** only allow read operations (no upload, delete, rename, mkdir, etc.)
+- **Secure by default (fail-closed)**: every configured security measure (chroot, read-only mount, privilege drop) MUST be applied or the program MUST fail; skipping or silently ignoring a configured security measure is not permitted, and the program MUST NOT serve as root
 
 ### Testing Strategy
 - Unit tests for config parsing and path validation

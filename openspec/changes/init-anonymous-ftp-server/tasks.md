@@ -21,6 +21,7 @@
 - [x] 3.4 Create security initialization sequence (bind → chroot → mount → drop)
 - [x] 3.5 Add tests for privilege dropping (requires root, may need integration test)
 - [x] 3.6 Add tests for chroot behavior
+- [x] 3.7 Enforce secure-by-default (fail-closed): configured security measures must be applied or the program exits (`cmd/rftp/security/harden.go`)
 
 ## 4. FTP Server Core
 - [x] 4.1 Create TCP listener with dual-stack support (`server/listener.go`)

@@ -61,8 +61,11 @@ sudo ./rftp -config config.example.yaml
 ```
 
 Running as root is recommended: it enables chroot, the read-only re-mount and
-privilege dropping. When started as a non-root user the server logs a warning and
-skips chroot/privilege drop, but still serves the directory read-only.
+privilege dropping. The server is **secure by default (fail-closed)**: every
+configured security measure must be applied or the program exits with a
+non-zero status. In particular, when started as a non-root user with `chroot`
+or `read_only_mount` enabled (the defaults), it refuses to start — set them to
+`false` explicitly to run without root.
 
 ### Configuration
 
@@ -96,12 +99,21 @@ log_level: info             # debug, info, warn, error
 
 1. Bind the control port (needs root for ports < 1024).
 2. `chroot` into `serve_dir` (fatal on failure when enabled).
-3. Re-mount `serve_dir` read-only (warn and continue on failure).
+3. Re-mount `serve_dir` read-only (fatal on failure when enabled).
 4. Drop privileges to `user`/`group` (fatal on failure).
 5. Serve read-only, validating every path and rejecting symlink escapes.
 
-Even without root, the server refuses all write commands and blocks path
-traversal, so the served directory is never modified.
+**Secure by default (fail-closed):** the server never skips or silently ignores
+a configured security measure. If chroot, the read-only re-mount or the
+privilege drop fails, the program logs an error and exits with a non-zero
+status. The server **never serves as root**: when started as root it always
+drops privileges before serving; when started unprivileged with `chroot` or
+`read_only_mount` enabled it refuses to start (set them to `false` explicitly
+to run without root — the process is then already unprivileged, so there are
+no root privileges to drop).
+
+Regardless of privileges, the server refuses all write commands and blocks
+path traversal, so the served directory is never modified.
 
 ## Deployment (systemd)
 

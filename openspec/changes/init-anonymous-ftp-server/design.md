@@ -64,19 +64,46 @@ log_level: info             # debug, info, warn, error
 ### Decision: Privilege dropping and chroot sequence
 **What**: When running as root, perform security hardening in this order:
 1. Bind to port (requires root for ports < 1024)
-2. Chroot into the served directory
-3. Re-mount the directory as read-only (if possible)
+2. Chroot into the served directory (if enabled)
+3. Re-mount the directory as read-only (if enabled)
 4. Drop privileges to configured user/group
 5. Continue serving
+
+The sequence is **fail-closed**: every step that is enabled in configuration
+must succeed. If any step fails, the server exits with a non-zero status — it
+never continues serving in a degraded security posture (see *Secure by default*).
 
 **Why**:
 - Binding must happen before dropping privileges
 - Chroot before dropping privileges ensures we're in the right context
 - Read-only mount prevents any accidental writes
 - Dropping privileges last minimizes root exposure
+- Fail-closed hardening makes the security guarantee explicit and auditable
 
 **Alternatives considered**:
 - Dropping privileges before chroot — rejected, as chroot typically requires root
+- Warn-and-continue when a hardening step fails — rejected, see *Secure by default*
+
+### Decision: Secure by default (fail-closed security hardening)
+**What**: The server MUST apply every configured security measure or fail:
+- `chroot: true` (default): chroot into `serve_dir`; if chroot fails, **exit with non-zero status**
+- `read_only_mount: true` (default): re-mount `serve_dir` read-only; if the re-mount fails, **exit with non-zero status**
+- Privilege dropping: when the server starts as root it MUST drop to the configured `user`/`group` before serving; if the drop fails, **exit with non-zero status**
+- Starting as non-root while `chroot: true` or `read_only_mount: true` is configured: the measure cannot be applied, so the server **refuses to start** (exit non-zero). The operator must either start as root or explicitly set the measure to `false`.
+- Starting as non-root with `chroot: false` and `read_only_mount: false`: the process is already unprivileged, so there are no root privileges to drop — the privilege-drop goal is satisfied. The server logs this explicitly (it is not a silent skip) and continues.
+
+In all cases the server MUST NOT serve as root. Skipping or silently ignoring
+a configured security measure is not permitted.
+
+**Why**:
+- Warn-and-continue silently degrades the security posture; an operator may never notice the warning
+- Fail-closed turns a degraded configuration into a visible, auditable startup error
+- Making the unprivileged path explicit (opt-out via config) keeps `chroot: true` / `read_only_mount: true` meaningful as defaults
+
+**Alternatives considered**:
+- Warn and continue if the read-only mount fails — rejected: silently ignores a configured security measure
+- Allow starting as non-root with `chroot`/`read_only_mount` enabled — rejected: the configured measures would be skipped
+- Refuse to start as non-root under any circumstances — rejected: running unprivileged is safe (no root privileges exist to drop), and containers commonly run services as non-root users with the root-only measures explicitly disabled
 
 ### Decision: Read-only command whitelist
 **What**: Only implement FTP commands that are read-only:
@@ -147,10 +174,10 @@ log_level: info             # debug, info, warn, error
 ## Risks / Trade-offs
 
 ### Risk: Chroot requires root
-**Mitigation**: Document that chroot requires running as root initially; provide clear error messages if chroot fails
+**Mitigation**: If `chroot` is enabled and the server is not running as root, it refuses to start with a clear error (secure by default). When running as root, a chroot failure is fatal.
 
 ### Risk: Read-only mount may not be possible in all environments
-**Mitigation**: Make read-only mount configurable; warn if it fails but continue if chroot succeeded
+**Mitigation**: Fail closed — if `read_only_mount` is enabled and the re-mount fails, the server exits with a non-zero status. Operators in restricted environments must explicitly set `read_only_mount: false`, which is a visible, auditable configuration choice rather than a silent skip.
 
 ### Risk: Passive mode port range exhaustion
 **Mitigation**: Implement port range rotation; close idle passive connections

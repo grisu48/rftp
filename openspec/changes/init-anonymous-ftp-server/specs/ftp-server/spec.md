@@ -68,22 +68,47 @@ The server MUST drop root privileges after binding to the port and performing ch
 - **WHEN** privilege dropping fails
 - **THEN** the server logs an error and exits with non-zero status
 
-#### Scenario: Running as non-root
-- **WHEN** the server starts as non-root
-- **THEN** the server logs a warning that chroot and privilege drop are skipped, and continues if possible
+#### Scenario: Running as non-root with root-only measures enabled
+- **WHEN** the server starts as non-root while `chroot: true` or `read_only_mount: true` is configured
+- **THEN** the server logs an error and exits with non-zero status, because a configured security measure cannot be applied
+
+#### Scenario: Running as non-root with measures explicitly disabled
+- **WHEN** the server starts as non-root with `chroot: false` and `read_only_mount: false`
+- **THEN** the server logs that it is already unprivileged (no root privileges exist to drop) and continues serving
 
 ---
 
 ### Requirement: Read-only filesystem mount
-When possible, the server SHALL re-mount the served directory as read-only before dropping privileges.
+When `read_only_mount: true` is configured, the server SHALL re-mount the served directory as read-only before dropping privileges. If the re-mount fails, the server MUST exit with non-zero status (secure by default).
 
 #### Scenario: Read-only mount attempted
 - **WHEN** the server starts as root and `read_only_mount: true` in config
 - **THEN** the server attempts to re-mount the served directory with read-only flag
 
-#### Scenario: Read-only mount failure handling
-- **WHEN** read-only mount fails
-- **THEN** the server logs a warning and continues (if chroot succeeded), or exits (if security policy requires)
+#### Scenario: Read-only mount failure is fatal
+- **WHEN** the server starts as root, `read_only_mount: true` is configured, and the read-only re-mount fails
+- **THEN** the server logs an error and exits with non-zero status
+
+---
+
+### Requirement: Secure by default (fail-closed security hardening)
+The server SHALL apply every configured security measure or fail. The server MUST NOT skip or silently ignore a configured security measure, and MUST NOT serve as root.
+
+#### Scenario: Configured measure cannot be applied
+- **WHEN** any configured security measure cannot be applied (chroot fails, read-only re-mount fails, or privilege drop fails)
+- **THEN** the server logs an error and exits with non-zero status
+
+#### Scenario: Privilege dropping is never skipped when running as root
+- **WHEN** the server starts as root
+- **THEN** the server drops privileges to the configured user/group before serving any connection, and exits with non-zero status if the drop fails or is not performed
+
+#### Scenario: Root-only measures enabled without root
+- **WHEN** the server starts as non-root with `chroot: true` or `read_only_mount: true` configured
+- **THEN** the server refuses to start and exits with non-zero status
+
+#### Scenario: Unprivileged start with measures explicitly disabled
+- **WHEN** the server starts as non-root with `chroot: false` and `read_only_mount: false`
+- **THEN** the server logs that it is already unprivileged and continues serving (no root privileges exist to drop)
 
 ---
 

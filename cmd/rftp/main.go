@@ -39,33 +39,22 @@ func run(configPath string) error {
 		return fmt.Errorf("cannot listen on %s: %w", cfg.ListenAddr, err)
 	}
 
-	// 2-4. Security hardening when running as root:
-	// chroot, re-mount read-only, then drop privileges.
-	if security.IsRoot() {
-		if cfg.Chroot {
-			if err := security.Chroot(cfg.ServeDir); err != nil {
-				return fmt.Errorf("chroot failed (fatal): %w", err)
-			}
-			// After chroot the served directory is the process root.
-			cfg.ServeDir = "/"
-			logger.Info("chrooted into served directory dir=/")
-		}
-		if cfg.ReadOnlyMount {
-			if err := security.RemountReadOnly(cfg.ServeDir); err != nil {
-				logger.Warn("read-only mount failed, continuing: %v", err)
-			} else {
-				logger.Info("served directory re-mounted read-only dir=%s", cfg.ServeDir)
-			}
-		}
-		if err := security.DropPrivileges(cfg.User, cfg.Group); err != nil {
-			return fmt.Errorf("privilege drop failed (fatal): %w", err)
-		}
-		logger.Info("dropped privileges user=%s group=%s", cfg.User, cfg.Group)
-	} else {
-		logger.Warn("not running as root: chroot and privilege drop skipped")
+	// 2. Security hardening: chroot, read-only re-mount, then drop
+	// privileges. Secure by default — every configured measure must be
+	// applied or the program fails.
+	serveDir, err := security.Apply(security.Hardening{
+		ServeDir:      cfg.ServeDir,
+		User:          cfg.User,
+		Group:         cfg.Group,
+		Chroot:        cfg.Chroot,
+		ReadOnlyMount: cfg.ReadOnlyMount,
+	})
+	if err != nil {
+		return err
 	}
+	cfg.ServeDir = serveDir
 
-	// 5. Graceful shutdown on SIGTERM/SIGINT.
+	// 3. Graceful shutdown on SIGTERM/SIGINT.
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
 	go func() {
@@ -77,7 +66,7 @@ func run(configPath string) error {
 	logger.Info("starting anonymous read-only FTP server version=1.0 passive_enabled=%t",
 		cfg.PassiveEnabled)
 
-	// 6. Serve until shutdown.
+	// 4. Serve until shutdown.
 	if err := srv.Serve(); err != nil {
 		return fmt.Errorf("server error: %w", err)
 	}

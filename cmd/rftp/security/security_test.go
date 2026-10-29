@@ -65,6 +65,14 @@ func TestHelperProcess(t *testing.T) {
 		helperPrivDrop(t)
 	case "mount":
 		helperMount(t)
+	case "harden-ok":
+		helperHardenOK(t)
+	case "harden-chroot-fail":
+		helperHardenFail(t, "chroot")
+	case "harden-mount-fail":
+		helperHardenFail(t, "mount")
+	case "harden-privdrop-fail":
+		helperHardenFail(t, "privdrop")
 	default:
 		return
 	}

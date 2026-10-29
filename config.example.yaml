@@ -11,8 +11,8 @@ passive_port_max: 40100
 serve_dir: /srv/ftp         # The single directory to serve (chrooted into when run as root)
 user: nobody                # Privileges are dropped to this user after binding
 group: nogroup              # Privileges are dropped to this group after binding
-chroot: true                # Chroot into serve_dir (requires root)
-read_only_mount: true       # Re-mount serve_dir read-only (requires root)
+chroot: true                # Chroot into serve_dir (requires root; startup fails if it cannot be applied)
+read_only_mount: true       # Re-mount serve_dir read-only (requires root; startup fails if it cannot be applied)
 
 # Logging (info/debug go to stdout, warn/error go to stderr)
 log_level: info             # One of: debug, info, warn, error
