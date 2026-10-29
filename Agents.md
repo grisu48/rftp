@@ -67,8 +67,13 @@ disabled by default (`passive_enabled: false`).
 - Standard library only; the single external dependency is `gopkg.in/yaml.v3`.
 - Logging goes to stdout (info/debug) and stderr (warn/error) only — never to
   log files. Do not log `PASS` arguments.
-- FTP replies follow RFC 959 (plus `EPSV`/`EPRT` per RFC 2428, UTF-8 per
-  RFC 2640); multi-line replies use `ddd-` continuation lines.
+- FTP replies follow RFC 959 (plus `EPSV`/`EPRT` per RFC 2428, `LPRT` per
+  RFC 1639, UTF-8 per RFC 2640); multi-line replies use `ddd-` continuation
+  lines. Recognized-but-unimplemented commands (`LPSV`, `STAT`, `ABOR`,
+  `ALLO`, `ACCT`, `SMNT`, `REIN`, `MLSD`, `MLST`, `REST`) get `502 Command
+  not implemented` — never `500` — so standard clients can fall back
+  (`EPSV -> PASV -> LPSV`, `EPRT -> PORT -> LPRT`). Unknown commands get
+  `500 Command not recognized`.
 - Keep the codebase minimal: no features beyond the specification, no plugin
   system, no TLS in this version.
 

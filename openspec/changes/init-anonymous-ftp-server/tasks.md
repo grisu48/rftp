@@ -30,6 +30,7 @@
 - [x] 4.3 Create session structure for per-connection state (`server/session.go`)
 - [x] 4.4 Implement FTP command parser (line-based, CRLF handling)
 - [x] 4.5 Implement response writer (standard FTP response codes)
+- [x] 4.6 Reply `502 Command not implemented` (not 500) for recognized-but-unimplemented commands so standard clients fall back
 
 ## 5. FTP Commands - Connection & Auth
 - [x] 5.1 Implement `USER` command (accept only "anonymous" or "ftp")
@@ -63,6 +64,7 @@
 - [x] 9.1 Implement `PORT` command (IPv4 active mode)
 - [x] 9.2 Implement `EPRT` command (extended active mode, IPv6-capable)
 - [x] 9.3 Implement active data connection establishment
+- [x] 9.4 Implement `LPRT` command (RFC 1639 long-address active mode)
 
 ## 10. Data Transfer - Passive Mode (Optional)
 - [x] 10.1 Implement passive port range management (`server/passive.go`)

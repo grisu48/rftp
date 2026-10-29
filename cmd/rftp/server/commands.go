@@ -87,6 +87,8 @@ func (s *Session) handleCommand(cmd ftp.Command) {
 		s.cmdPort(cmd.Arg)
 	case ftp.CmdEPRT:
 		s.cmdEprt(cmd.Arg)
+	case ftp.CmdLPRT:
+		s.cmdLprt(cmd.Arg)
 	case ftp.CmdPASV:
 		s.cmdPasv()
 	case ftp.CmdEPSV:
@@ -103,8 +105,14 @@ func (s *Session) handleCommand(cmd ftp.Command) {
 		logger.Warn("rejected write command remote=%s cmd=%s", s.remoteAddr, cmd.Name)
 		s.reply(ftp.R550ActionNotTaken, "Read-only file system")
 
-	// Recognized but not implemented.
-	case ftp.CmdMLSD, ftp.CmdMLST, ftp.CmdREST:
+	// Recognized but not implemented. 502 (not 500) is essential here:
+	// 500 means "command unrecognized" and breaks the fallback chains of
+	// standard clients (e.g. the classic ftp client tries EPSV -> PASV ->
+	// LPSV and EPRT -> PORT -> LPRT), while 502 tells them to fall back to
+	// a supported command.
+	case ftp.CmdMLSD, ftp.CmdMLST, ftp.CmdREST,
+		ftp.CmdLPSV, ftp.CmdSTAT, ftp.CmdABOR, ftp.CmdALLO,
+		ftp.CmdACCT, ftp.CmdSMNT, ftp.CmdREIN:
 		s.reply(ftp.R502NotImplemented, "Command not implemented")
 
 	default:
@@ -490,6 +498,79 @@ func (s *Session) cmdEprt(arg string) {
 	}
 	s.setActive(&net.TCPAddr{IP: ip, Port: port})
 	s.reply(ftp.R200CommandOK, "EPRT command successful")
+}
+
+// cmdLprt implements RFC 1639 extended active mode with long addresses:
+//
+//	LPRT <af>,<hal>,<h1>,...,<hN>,<pal>,<p1>,<p2>
+//
+// The address family is determined by the address length (hal): 4 = IPv4,
+// 16 = IPv6. Real-world clients send af=4/af=6 (the IP version number), so
+// af is validated loosely (1/2/4/6) and cross-checked against hal.
+// Standard clients need LPRT in their fallback chain: after EPSV fails they
+// skip EPRT and try LPRT (e.g. the classic ftp client over IPv6).
+func (s *Session) cmdLprt(arg string) {
+	fail := func() {
+		s.reply(ftp.R501SyntaxErrorParams, "Syntax error in LPRT command")
+	}
+	fields := strings.Split(arg, ",")
+	if len(fields) < 5 {
+		fail()
+		return
+	}
+	af, err := strconv.Atoi(strings.TrimSpace(fields[0]))
+	if err != nil || (af != 1 && af != 2 && af != 4 && af != 6) {
+		fail()
+		return
+	}
+	hal, err := strconv.Atoi(strings.TrimSpace(fields[1]))
+	if err != nil || (hal != 4 && hal != 16) {
+		fail()
+		return
+	}
+	// af and hal must agree on the address family (1/4 = IPv4, 2/6 = IPv6).
+	if (hal == 16) != (af == 2 || af == 6) {
+		fail()
+		return
+	}
+	// af, hal, hal address bytes, pal, pal port bytes.
+	if len(fields) != 5+hal {
+		fail()
+		return
+	}
+	pal, err := strconv.Atoi(strings.TrimSpace(fields[2+hal]))
+	if err != nil || pal != 2 {
+		fail()
+		return
+	}
+	addrBytes := make([]byte, hal)
+	for i := 0; i < hal; i++ {
+		n, err := strconv.Atoi(strings.TrimSpace(fields[2+i]))
+		if err != nil || n < 0 || n > 255 {
+			fail()
+			return
+		}
+		addrBytes[i] = byte(n)
+	}
+	var ip net.IP
+	if hal == 4 {
+		ip = net.IPv4(addrBytes[0], addrBytes[1], addrBytes[2], addrBytes[3])
+	} else {
+		ip = net.IP(addrBytes)
+	}
+	p1, err1 := strconv.Atoi(strings.TrimSpace(fields[3+hal]))
+	p2, err2 := strconv.Atoi(strings.TrimSpace(fields[4+hal]))
+	if err1 != nil || err2 != nil || p1 < 0 || p1 > 255 || p2 < 0 || p2 > 255 {
+		fail()
+		return
+	}
+	port := p1*256 + p2
+	if port == 0 {
+		fail()
+		return
+	}
+	s.setActive(&net.TCPAddr{IP: ip, Port: port})
+	s.reply(ftp.R200CommandOK, "LPRT command successful")
 }
 
 // cmdPasv implements IPv4 passive mode: PASV -> 227 (h1,h2,h3,h4,p1,p2).

@@ -16,7 +16,7 @@ Existing FTP servers (vsftpd, ProFTPD, Pure-FTPd) are feature-rich but complex. 
 - **NEW**: Security hardening (chroot, read-only mount, privilege drop)
 - **NEW**: Dual-stack IPv4/IPv6 listener
 - **NEW**: Active and passive mode support (passive disabled by default)
-- **NEW**: Read-only command set (USER, PASS, SYST, PWD, CWD, CDUP, TYPE, MODE, STRU, NOOP, QUIT, PASV, PORT, LIST, NLST, RETR, SIZE, MDTM, FEAT, OPTS, HELP)
+- **NEW**: Read-only command set (USER, PASS, SYST, PWD, CWD, CDUP, TYPE, MODE, STRU, NOOP, QUIT, PASV, PORT, EPSV, EPRT, LPRT, LIST, NLST, RETR, SIZE, MDTM, FEAT, OPTS, HELP)
 
 ## Impact
 - New project with no existing code to modify

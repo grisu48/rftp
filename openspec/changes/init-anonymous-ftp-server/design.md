@@ -117,7 +117,18 @@ a configured security measure is not permitted.
 - Information: `SYST`, `FEAT`, `HELP`, `SITE` (limited)
 - Listing: `LIST`, `NLST`, `MLSD` (if needed)
 - Retrieval: `RETR`, `SIZE`, `MDTM`
-- Passive/Active: `PASV`, `PORT`, `EPSV`, `EPRT` (dual-stack)
+- Passive/Active: `PASV`, `PORT`, `EPSV`, `EPRT` (dual-stack), `LPRT` (RFC 1639 long addresses)
+
+**Recognized but not implemented** (answered with `502 Command not implemented`):
+`LPSV` (RFC 1639), `STAT`, `ABOR`, `ALLO`, `ACCT`, `SMNT`, `REIN`, `MLSD`, `MLST`, `REST`
+
+The 502 (not 500) reply is deliberate: 500 means "command unrecognized" and
+breaks the fallback chains of standard clients — the classic `ftp` client
+tries `EPSV -> PASV -> LPSV` (passive) and `EPRT -> PORT -> LPRT` (active)
+and only falls back to a supported command when it gets a clean 502. `LPRT`
+is implemented because clients reach for it when `EPRT`/`PORT` are
+unavailable (e.g. the classic `ftp` client over IPv6 skips `EPRT` after
+`EPSV` fails and tries `LPRT` directly).
 
 **Explicitly rejected commands** (write operations):
 - `STOR`, `APPE`, `STOU` (upload)

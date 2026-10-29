@@ -807,3 +807,159 @@ func TestGracefulShutdown(t *testing.T) {
 	// Close is idempotent.
 	srv.Close()
 }
+
+// --- RFC 1639 LPRT and client fallback chains ----------------------------------
+//
+// Standard ftp clients walk fallback chains for the data connection:
+//   passive: EPSV -> PASV -> LPSV     (inetutils-ftp, IPv4)
+//   passive: EPSV -> LPSV             (tnftp, IPv6)
+//   active:  EPRT -> PORT -> LPRT     (inetutils-ftp)
+//   active:  EPRT -> PORT             (tnftp, IPv4); LPRT (tnftp, IPv6)
+// Every refused/unimplemented command must get a clean 502 so the client
+// can continue the chain; an unknown command gets 500.
+
+func TestLprtActiveMode(t *testing.T) {
+	_, addr := startTestServer(t, nil)
+	c := dialTestClient(t, addr)
+	c.login()
+
+	// IPv4 long address, as sent by inetutils-ftp (af=4, hal=4).
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	port := ln.Addr().(*net.TCPAddr).Port
+
+	c.cmd("LPRT 4,4,127,0,0,1,2,%d,%d", port>>8, port&0xff)
+	c.expect(200, "LPRT command successful")
+
+	c.cmd("RETR hello.txt")
+	c.expect(150)
+	if got := readDataConn(t, c, ln); got != "hello world\n" {
+		t.Errorf("RETR data = %q", got)
+	}
+	c.expect(226)
+}
+
+func TestLprtActiveModeIPv6(t *testing.T) {
+	// tnftp over IPv6 sends LPRT (af=6, hal=16) after EPSV fails.
+	_, addr := startTestServerOn(t, "[::1]:0", nil)
+	c := dialTestClient(t, addr)
+	c.login()
+
+	ln, err := net.Listen("tcp", "[::1]:0")
+	if err != nil {
+		t.Skipf("cannot listen on [::1]: %v", err)
+	}
+	defer ln.Close()
+	port := ln.Addr().(*net.TCPAddr).Port
+
+	c.cmd("LPRT 6,16,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,2,%d,%d", port>>8, port&0xff)
+	c.expect(200, "LPRT command successful")
+
+	c.cmd("RETR hello.txt")
+	c.expect(150)
+	if got := readDataConn(t, c, ln); got != "hello world\n" {
+		t.Errorf("RETR data = %q", got)
+	}
+	c.expect(226)
+}
+
+func TestLprtSyntaxErrors(t *testing.T) {
+	_, addr := startTestServer(t, nil)
+	c := dialTestClient(t, addr)
+	c.login()
+
+	c.cmd("LPRT") // missing argument
+	c.expect(501)
+	c.cmd("LPRT 4,4,127,0,0,1") // too few fields
+	c.expect(501)
+	c.cmd("LPRT 4,8,1,2,3,4,5,6,7,8,2,1,2") // unsupported address length
+	c.expect(501)
+	c.cmd("LPRT 9,4,127,0,0,1,2,1,2") // bad address family
+	c.expect(501)
+	c.cmd("LPRT 6,4,127,0,0,1,2,1,2") // af and hal disagree
+	c.expect(501)
+	c.cmd("LPRT 4,4,127,0,0,1,3,1,2") // port length must be 2
+	c.expect(501)
+	c.cmd("LPRT 4,4,127,0,0,1,2,0,0") // port 0
+	c.expect(501)
+	c.cmd("LPRT 4,4,127,0,0,256,2,1,2") // address byte out of range
+	c.expect(501)
+}
+
+func TestRecognizedButUnimplementedCommandsGet502(t *testing.T) {
+	_, addr := startTestServer(t, nil)
+	c := dialTestClient(t, addr)
+	c.login()
+
+	// Recognized but not implemented: 502 so clients fall back.
+	for _, cmd := range []string{
+		"LPSV", "STAT", "ABOR", "ALLO", "ACCT", "SMNT", "REIN",
+		"MLSD", "MLST", "REST",
+	} {
+		c.cmd(cmd)
+		c.expect(502, "Command not implemented")
+	}
+
+	// Completely unknown commands still get 500.
+	c.cmd("FOOBAR")
+	c.expect(500, "Command not recognized")
+}
+
+func TestClientFallbackChainPassiveRefused(t *testing.T) {
+	// Regression test for the classic ftp client against a server with
+	// passive mode disabled (the default): EPSV -> PASV -> LPSV must all
+	// get clean 502 replies, and the active fallback (PORT) must then work.
+	_, addr := startTestServer(t, nil)
+	c := dialTestClient(t, addr)
+	c.login()
+
+	c.cmd("EPSV")
+	c.expect(502, "Passive mode disabled")
+	c.cmd("PASV")
+	c.expect(502, "Passive mode disabled")
+	c.cmd("LPSV")
+	c.expect(502, "Command not implemented")
+
+	// Active fallback: PORT -> LIST works.
+	ln := setupActiveMode(t, c)
+	c.cmd("LIST")
+	c.expect(150)
+	listing := readDataConn(t, c, ln)
+	c.expect(226)
+	if !strings.Contains(listing, "hello.txt") {
+		t.Errorf("LIST output missing hello.txt:\n%s", listing)
+	}
+}
+
+func TestClientFallbackChainViaLprt(t *testing.T) {
+	// tnftp over IPv6: EPSV -> LPSV -> LPRT. With passive disabled the
+	// passive attempts get 502 and LPRT must complete the transfer.
+	_, addr := startTestServerOn(t, "[::1]:0", nil)
+	c := dialTestClient(t, addr)
+	c.login()
+
+	c.cmd("EPSV")
+	c.expect(502, "Passive mode disabled")
+	c.cmd("LPSV")
+	c.expect(502, "Command not implemented")
+
+	ln, err := net.Listen("tcp", "[::1]:0")
+	if err != nil {
+		t.Skipf("cannot listen on [::1]: %v", err)
+	}
+	defer ln.Close()
+	port := ln.Addr().(*net.TCPAddr).Port
+
+	c.cmd("LPRT 6,16,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,2,%d,%d", port>>8, port&0xff)
+	c.expect(200, "LPRT command successful")
+
+	c.cmd("RETR hello.txt")
+	c.expect(150)
+	if got := readDataConn(t, c, ln); got != "hello world\n" {
+		t.Errorf("RETR data = %q", got)
+	}
+	c.expect(226)
+}

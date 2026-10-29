@@ -35,7 +35,7 @@ A minimal, security-focused, read-only anonymous FTP server written in Go. The s
 - Security tests for privilege dropping and chroot behavior
 
 ## Domain Context
-- FTP protocol: RFC 959 (base), RFC 2428 (IPv6 extensions), RFC 2640 (UTF-8)
+- FTP protocol: RFC 959 (base), RFC 2428 (IPv6 extensions), RFC 2640 (UTF-8), RFC 1639 (long addresses: LPRT/LPSV)
 - Passive mode: RFC 959 Section 4.2.2 (PORT/PASV commands)
 - Anonymous FTP: standard "anonymous" or "ftp" username with email-like password
 

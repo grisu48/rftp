@@ -18,8 +18,15 @@ re-mounting it read-only, and dropping root privileges.
   root (`CWD ../../etc`) and symlinks pointing outside the root are blocked with
   `550 Access denied`.
 - **Dual-stack** — listens on both IPv4 and IPv6 via a single dual-stack socket.
-- **Active and passive mode** — `PORT`/`EPRT` (active) always supported;
+- **Active and passive mode** — `PORT`/`EPRT`/`LPRT` (active) always supported;
   `PASV`/`EPSV` (passive) disabled by default, enable via configuration.
+- **Client-friendly fallbacks** — recognized but unimplemented commands (e.g.
+  `LPSV`, `STAT`, `ABOR`, `MLSD`) are answered with `502 Command not
+  implemented` (not `500`), so standard clients such as the classic `ftp`
+  client fall back to supported commands (`PASV`/`PORT`/`EPRT`/`LPRT`)
+  instead of failing. Clients that *only* support passive mode (e.g. GNU
+  `inetutils` ftp with `passive` enabled) need `passive_enabled: true` on
+  the server, since passive mode is disabled by default.
 - **Security hardening** — when started as root: bind → chroot → read-only
   re-mount → drop privileges to a non-privileged user. Privilege drop failure
   is fatal.
@@ -34,7 +41,7 @@ re-mounting it read-only, and dropping root privileges.
 | Navigation   | `PWD`, `CWD`, `CDUP`, `TYPE`, `MODE`, `STRU`                     |
 | Information  | `SYST`, `FEAT`, `HELP`, `SIZE`, `MDTM`, `OPTS UTF8 ON`           |
 | Transfers    | `LIST`, `NLST`, `RETR`                                           |
-| Data setup   | `PORT`, `EPRT`, `PASV`, `EPSV` (passive only when enabled)       |
+| Data setup   | `PORT`, `EPRT`, `LPRT`, `PASV`, `EPSV` (passive only when enabled) |
 
 ## Project layout
 

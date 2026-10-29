@@ -76,8 +76,10 @@ const (
 
 	CmdPORT = "PORT"
 	CmdEPRT = "EPRT"
+	CmdLPRT = "LPRT"
 	CmdPASV = "PASV"
 	CmdEPSV = "EPSV"
+	CmdLPSV = "LPSV"
 
 	// TLS-related commands, always rejected (plain FTP only).
 	CmdAUTH = "AUTH"
@@ -101,6 +103,16 @@ const (
 	CmdMLSD = "MLSD"
 	CmdMLST = "MLST"
 	CmdREST = "REST"
+
+	// Standard commands (RFC 959 / RFC 1639) that are recognized but not
+	// implemented. They are answered with 502 (not 500) so that clients
+	// fall back to supported commands.
+	CmdSTAT = "STAT"
+	CmdABOR = "ABOR"
+	CmdALLO = "ALLO"
+	CmdACCT = "ACCT"
+	CmdSMNT = "SMNT"
+	CmdREIN = "REIN"
 )
 
 // TransferType is the FTP transfer type set by the TYPE command.

@@ -157,6 +157,23 @@ The server MUST support active mode (`PORT`/`EPRT`) for data transfers.
 - **WHEN** a client sends `EPRT |2|IPv6-address|port|`
 - **THEN** the server connects to the specified IPv6 address for data transfer
 
+#### Scenario: Long-address active mode (LPRT)
+- **WHEN** a client sends `LPRT <af>,<hal>,<address bytes>,<pal>,<port bytes>` (RFC 1639)
+- **THEN** the server responds with `200 LPRT command successful` and connects to the specified address for data transfer
+
+---
+
+### Requirement: Recognized but unimplemented commands get 502
+Commands that are recognized but not implemented (`LPSV`, `STAT`, `ABOR`, `ALLO`, `ACCT`, `SMNT`, `REIN`, `MLSD`, `MLST`, `REST`) SHALL be answered with `502 Command not implemented`, so that clients fall back to supported commands. A completely unknown command SHALL be answered with `500 Command not recognized`.
+
+#### Scenario: Passive fallback command not implemented
+- **WHEN** a client sends `LPSV` (e.g. after `EPSV`/`PASV` were refused because passive mode is disabled)
+- **THEN** the server responds with `502 Command not implemented`
+
+#### Scenario: Unknown command
+- **WHEN** a client sends a command the server does not recognize at all
+- **THEN** the server responds with `500 Command not recognized`
+
 ---
 
 ### Requirement: YAML configuration file

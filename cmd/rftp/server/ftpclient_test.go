@@ -35,6 +35,13 @@ type testClient struct {
 // accept loop. mutate can adjust the config (e.g. enable passive mode).
 func startTestServer(t *testing.T, mutate func(*config.Config)) (*Server, string) {
 	t.Helper()
+	return startTestServerOn(t, "127.0.0.1:0", mutate)
+}
+
+// startTestServerOn is startTestServer with a custom listen address. If the
+// address cannot be bound (e.g. no IPv6 support), the test is skipped.
+func startTestServerOn(t *testing.T, listenAddr string, mutate func(*config.Config)) (*Server, string) {
+	t.Helper()
 
 	dir := t.TempDir()
 	writeTestFile(t, dir, "hello.txt", "hello world\n")
@@ -42,7 +49,7 @@ func startTestServer(t *testing.T, mutate func(*config.Config)) (*Server, string
 	writeTestFile(t, dir, "pub/data.bin", "\x00\x01\x02\x03")
 
 	cfg := config.Default()
-	cfg.ListenAddr = "127.0.0.1:0"
+	cfg.ListenAddr = listenAddr
 	cfg.ServeDir = dir
 	cfg.Chroot = false
 	cfg.ReadOnlyMount = false
@@ -53,7 +60,7 @@ func startTestServer(t *testing.T, mutate func(*config.Config)) (*Server, string
 
 	srv, err := New(cfg)
 	if err != nil {
-		t.Fatalf("server.New: %v", err)
+		t.Skipf("cannot listen on %s: %v", listenAddr, err)
 	}
 	go srv.Serve()
 	t.Cleanup(srv.Close)
