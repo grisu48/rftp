@@ -252,9 +252,12 @@ func (s *Session) cmdStru(arg string) {
 // --- Information -------------------------------------------------------------
 
 func (s *Session) cmdFeat() {
-	features := []string{"Features:", " UTF8", " TVFS", " SIZE", " MDTM", " EPRT", " EPSV", "End"}
+	// EPRT (active mode) is always available. EPSV/PASV (passive mode)
+	// are only advertised when passive mode is enabled, so that clients
+	// do not attempt passive connections that would be rejected with 502.
+	features := []string{"Features:", " UTF8", " TVFS", " SIZE", " MDTM", " EPRT", "End"}
 	if s.srv.cfg.PassiveEnabled {
-		features = append(features[:len(features)-1], " PASV", "End")
+		features = append(features[:len(features)-1], " EPSV", " PASV", "End")
 	}
 	s.replyLines(ftp.R211SystemStatus, features)
 }

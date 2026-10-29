@@ -159,7 +159,7 @@ func TestSystFeatHelp(t *testing.T) {
 	c.cmd("FEAT")
 	lines := c.expect(211)
 	joined := strings.Join(lines, "\n")
-	for _, feat := range []string{"UTF8", "SIZE", "MDTM"} {
+	for _, feat := range []string{"UTF8", "SIZE", "MDTM", "EPRT"} {
 		if !strings.Contains(joined, feat) {
 			t.Errorf("FEAT reply missing %q: %v", feat, lines)
 		}
@@ -174,6 +174,50 @@ func TestSystFeatHelp(t *testing.T) {
 
 	c.cmd("HELP")
 	c.expect(214, "USER", "RETR")
+}
+
+// TestFeatPassiveDisabled verifies that FEAT does NOT advertise EPSV/PASV
+// when passive mode is disabled (the default), so clients do not attempt
+// passive connections that would be rejected with 502.
+func TestFeatPassiveDisabled(t *testing.T) {
+	_, addr := startTestServer(t, nil) // default: passive disabled
+	c := dialTestClient(t, addr)
+	c.login()
+
+	c.cmd("FEAT")
+	lines := c.expect(211)
+	joined := strings.Join(lines, "\n")
+
+	// Active-mode features are always advertised.
+	for _, feat := range []string{"EPRT", "SIZE", "MDTM"} {
+		if !strings.Contains(joined, feat) {
+			t.Errorf("FEAT reply missing %q: %v", feat, lines)
+		}
+	}
+	// Passive-mode features must NOT be advertised when disabled.
+	for _, feat := range []string{"EPSV", "PASV"} {
+		if strings.Contains(joined, feat) {
+			t.Errorf("FEAT should not advertise %q when passive mode is disabled: %v", feat, lines)
+		}
+	}
+}
+
+// TestFeatPassiveEnabled verifies that FEAT advertises EPSV/PASV when
+// passive mode is enabled.
+func TestFeatPassiveEnabled(t *testing.T) {
+	_, addr := startTestServer(t, enablePassive)
+	c := dialTestClient(t, addr)
+	c.login()
+
+	c.cmd("FEAT")
+	lines := c.expect(211)
+	joined := strings.Join(lines, "\n")
+
+	for _, feat := range []string{"EPRT", "EPSV", "PASV"} {
+		if !strings.Contains(joined, feat) {
+			t.Errorf("FEAT reply missing %q: %v", feat, lines)
+		}
+	}
 }
 
 func TestTypeModeStru(t *testing.T) {
@@ -372,6 +416,44 @@ func setupActiveMode(t *testing.T, c *testClient) net.Listener {
 	c.cmd("PORT 127,0,0,1,%d,%d", port>>8, port&0xff)
 	c.expect(200, "PORT command successful")
 	return ln
+}
+
+// setupPassiveMode sends PASV, parses the 227 reply and dials the passive
+// data connection. It returns the established data connection.
+func setupPassiveMode(t *testing.T, c *testClient) net.Conn {
+	t.Helper()
+	c.cmd("PASV")
+	lines := c.expect(227, "Entering Passive Mode (")
+	var h1, h2, h3, h4, p1, p2 int
+	if _, err := fmt.Sscanf(lines[0], "227 Entering Passive Mode (%d,%d,%d,%d,%d,%d)",
+		&h1, &h2, &h3, &h4, &p1, &p2); err != nil {
+		t.Fatalf("parse PASV reply %q: %v", lines[0], err)
+	}
+	port := p1*256 + p2
+	dc, err := net.DialTimeout("tcp", fmt.Sprintf("%d.%d.%d.%d:%d", h1, h2, h3, h4, port), 5*time.Second)
+	if err != nil {
+		t.Fatalf("dial passive data channel: %v", err)
+	}
+	t.Cleanup(func() { dc.Close() })
+	return dc
+}
+
+// setupPassiveModeEpsv sends EPSV, parses the 229 reply and dials the passive
+// data connection. It returns the established data connection.
+func setupPassiveModeEpsv(t *testing.T, c *testClient) net.Conn {
+	t.Helper()
+	c.cmd("EPSV")
+	lines := c.expect(229, "Entering Extended Passive Mode (|||")
+	var port int
+	if _, err := fmt.Sscanf(lines[0], "229 Entering Extended Passive Mode (|||%d|)", &port); err != nil {
+		t.Fatalf("parse EPSV reply %q: %v", lines[0], err)
+	}
+	dc, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 5*time.Second)
+	if err != nil {
+		t.Fatalf("dial passive data channel: %v", err)
+	}
+	t.Cleanup(func() { dc.Close() })
+	return dc
 }
 
 // readDataConn accepts one data connection from ln and returns its contents.
@@ -960,6 +1042,255 @@ func TestClientFallbackChainViaLprt(t *testing.T) {
 	c.expect(150)
 	if got := readDataConn(t, c, ln); got != "hello world\n" {
 		t.Errorf("RETR data = %q", got)
+	}
+	c.expect(226)
+}
+
+// --- Passive-disabled full workflow (acceptance test) --------------------------
+//
+// This test verifies that the server is fully functional with passive mode
+// disabled (the default): a client using only active mode (PORT) can list
+// directories, stat files and retrieve files. It also verifies that passive
+// commands are rejected and not advertised in FEAT.
+
+func TestPassiveDisabledFullWorkflow(t *testing.T) {
+	srv, addr := startTestServer(t, nil) // default: passive disabled
+	c := dialTestClient(t, addr)
+	c.login()
+
+	// 1. Passive commands must be rejected with 502.
+	c.cmd("PASV")
+	c.expect(502, "Passive mode disabled")
+	c.cmd("EPSV")
+	c.expect(502, "Passive mode disabled")
+
+	// 2. FEAT must not advertise passive features.
+	c.cmd("FEAT")
+	featLines := c.expect(211)
+	featJoined := strings.Join(featLines, "\n")
+	if strings.Contains(featJoined, "EPSV") || strings.Contains(featJoined, "PASV") {
+		t.Errorf("FEAT advertises passive features when disabled: %v", featLines)
+	}
+	if !strings.Contains(featJoined, "EPRT") {
+		t.Errorf("FEAT should advertise EPRT (active mode): %v", featLines)
+	}
+
+	// 3. LIST via active mode (PORT).
+	ln := setupActiveMode(t, c)
+	c.cmd("LIST")
+	c.expect(150, "Here comes the directory listing")
+	listing := readDataConn(t, c, ln)
+	c.expect(226, "Directory send OK")
+	for _, want := range []string{"hello.txt", "pub"} {
+		if !strings.Contains(listing, want) {
+			t.Errorf("LIST output missing %q:\n%s", want, listing)
+		}
+	}
+	if !strings.Contains(listing, "-rw-r--r--") {
+		t.Errorf("LIST output missing file mode line:\n%s", listing)
+	}
+	if !strings.Contains(listing, "drwxr-xr-x") {
+		t.Errorf("LIST output missing directory mode line:\n%s", listing)
+	}
+
+	// 4. NLST via active mode (PORT).
+	ln = setupActiveMode(t, c)
+	c.cmd("NLST")
+	c.expect(150)
+	names := readDataConn(t, c, ln)
+	c.expect(226)
+	gotNames := map[string]bool{}
+	for _, line := range strings.Split(strings.TrimRight(names, "\r\n"), "\r\n") {
+		gotNames[line] = true
+	}
+	for _, want := range []string{"hello.txt", "pub"} {
+		if !gotNames[want] {
+			t.Errorf("NLST output missing %q, got:\n%s", want, names)
+		}
+	}
+
+	// 5. SIZE (file stats — no data connection needed).
+	c.cmd("SIZE hello.txt")
+	c.expect(213, "12")
+	c.cmd("SIZE /pub/data.bin")
+	c.expect(213, "4")
+	c.cmd("SIZE pub") // directory: not a regular file
+	c.expect(550, "Not a regular file")
+	c.cmd("SIZE missing.txt")
+	c.expect(550)
+
+	// 6. MDTM (file stats — no data connection needed).
+	info, err := os.Stat(filepath.Join(srv.cfg.ServeDir, "hello.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantMdtm := info.ModTime().UTC().Format("20060102150405")
+	c.cmd("MDTM hello.txt")
+	c.expect(213, wantMdtm)
+	c.cmd("MDTM missing.txt")
+	c.expect(550)
+
+	// 7. RETR text file via active mode (PORT).
+	ln = setupActiveMode(t, c)
+	c.cmd("RETR hello.txt")
+	c.expect(150, "Opening BINARY mode data connection")
+	if got := readDataConn(t, c, ln); got != "hello world\n" {
+		t.Errorf("RETR hello.txt data = %q, want %q", got, "hello world\n")
+	}
+	c.expect(226, "Transfer complete")
+
+	// 8. RETR binary file via active mode (PORT).
+	ln = setupActiveMode(t, c)
+	c.cmd("RETR /pub/data.bin")
+	c.expect(150)
+	if got := readDataConn(t, c, ln); got != "\x00\x01\x02\x03" {
+		t.Errorf("RETR data.bin data = %q, want binary bytes", got)
+	}
+	c.expect(226)
+
+	// 9. RETR from subdirectory after CWD.
+	c.cmd("CWD pub")
+	c.expect(250)
+	ln = setupActiveMode(t, c)
+	c.cmd("RETR readme.md")
+	c.expect(150)
+	if got := readDataConn(t, c, ln); got != "# readme\n" {
+		t.Errorf("RETR readme.md data = %q, want %q", got, "# readme\n")
+	}
+	c.expect(226)
+	c.cmd("CWD /")
+	c.expect(250)
+
+	// 10. Error cases still work.
+	ln = setupActiveMode(t, c)
+	c.cmd("RETR missing.txt")
+	c.expect(550, "No such file or directory")
+	ln.Close()
+
+	ln = setupActiveMode(t, c)
+	c.cmd("RETR pub") // directory, not a file
+	c.expect(550, "Not a regular file")
+	ln.Close()
+
+	ln = setupActiveMode(t, c)
+	c.cmd("LIST /missing-dir")
+	c.expect(550, "No such file or directory")
+	ln.Close()
+
+	// 11. After the listener is closed, the stale active address fails
+	// with 425 (the address is still set but unreachable).
+	c.cmd("RETR hello.txt")
+	c.expect(425, "Cannot open data connection")
+}
+
+// --- Passive-enabled full workflow (acceptance test) ---------------------------
+//
+// This test verifies that the server is fully functional with passive mode
+// enabled: a client using passive mode (PASV/EPSV) can list directories,
+// stat files and retrieve files. It also verifies that active mode still
+// works as a fallback.
+
+func TestPassiveEnabledFullWorkflow(t *testing.T) {
+	srv, addr := startTestServer(t, enablePassive)
+	c := dialTestClient(t, addr)
+	c.login()
+
+	// 1. Passive commands must work.
+	c.cmd("PASV")
+	c.expect(227, "Entering Passive Mode (")
+	c.cmd("EPSV")
+	c.expect(229, "Entering Extended Passive Mode (|||")
+
+	// 2. FEAT must advertise passive features.
+	c.cmd("FEAT")
+	featLines := c.expect(211)
+	featJoined := strings.Join(featLines, "\n")
+	for _, feat := range []string{"EPRT", "EPSV", "PASV"} {
+		if !strings.Contains(featJoined, feat) {
+			t.Errorf("FEAT reply missing %q: %v", feat, featLines)
+		}
+	}
+
+	// 3. LIST via passive mode (PASV).
+	dc := setupPassiveMode(t, c)
+	c.cmd("LIST")
+	c.expect(150, "Here comes the directory listing")
+	listing := readDataAll(t, dc)
+	c.expect(226, "Directory send OK")
+	for _, want := range []string{"hello.txt", "pub"} {
+		if !strings.Contains(listing, want) {
+			t.Errorf("LIST output missing %q:\n%s", want, listing)
+		}
+	}
+
+	// 4. NLST via passive mode (EPSV).
+	dc = setupPassiveModeEpsv(t, c)
+	c.cmd("NLST")
+	c.expect(150)
+	names := readDataAll(t, dc)
+	c.expect(226)
+	gotNames := map[string]bool{}
+	for _, line := range strings.Split(strings.TrimRight(names, "\r\n"), "\r\n") {
+		gotNames[line] = true
+	}
+	for _, want := range []string{"hello.txt", "pub"} {
+		if !gotNames[want] {
+			t.Errorf("NLST output missing %q, got:\n%s", want, names)
+		}
+	}
+
+	// 5. SIZE (file stats — no data connection needed).
+	c.cmd("SIZE hello.txt")
+	c.expect(213, "12")
+	c.cmd("SIZE /pub/data.bin")
+	c.expect(213, "4")
+
+	// 6. MDTM (file stats — no data connection needed).
+	info, err := os.Stat(filepath.Join(srv.cfg.ServeDir, "hello.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantMdtm := info.ModTime().UTC().Format("20060102150405")
+	c.cmd("MDTM hello.txt")
+	c.expect(213, wantMdtm)
+
+	// 7. RETR text file via passive mode (PASV).
+	dc = setupPassiveMode(t, c)
+	c.cmd("RETR hello.txt")
+	c.expect(150, "Opening BINARY mode data connection")
+	if got := readDataAll(t, dc); got != "hello world\n" {
+		t.Errorf("RETR hello.txt data = %q, want %q", got, "hello world\n")
+	}
+	c.expect(226, "Transfer complete")
+
+	// 8. RETR binary file via passive mode (EPSV).
+	dc = setupPassiveModeEpsv(t, c)
+	c.cmd("RETR /pub/data.bin")
+	c.expect(150)
+	if got := readDataAll(t, dc); got != "\x00\x01\x02\x03" {
+		t.Errorf("RETR data.bin data = %q, want binary bytes", got)
+	}
+	c.expect(226)
+
+	// 9. RETR from subdirectory after CWD, via passive mode.
+	c.cmd("CWD pub")
+	c.expect(250)
+	dc = setupPassiveMode(t, c)
+	c.cmd("RETR readme.md")
+	c.expect(150)
+	if got := readDataAll(t, dc); got != "# readme\n" {
+		t.Errorf("RETR readme.md data = %q, want %q", got, "# readme\n")
+	}
+	c.expect(226)
+	c.cmd("CWD /")
+	c.expect(250)
+
+	// 10. Active mode also works as a fallback.
+	ln := setupActiveMode(t, c)
+	c.cmd("RETR hello.txt")
+	c.expect(150)
+	if got := readDataConn(t, c, ln); got != "hello world\n" {
+		t.Errorf("RETR hello.txt (active) data = %q", got)
 	}
 	c.expect(226)
 }
