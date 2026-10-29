@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"anonftp/cmd/rftp/config"
+	"github.com/grisu48/rftp/cmd/rftp/config"
 )
 
 // --- Authentication (spec: anonymous-only) -----------------------------------

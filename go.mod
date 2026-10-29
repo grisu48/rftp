@@ -1,4 +1,4 @@
-module anonftp
+module github.com/grisu48/rftp
 
 go 1.27.1
 

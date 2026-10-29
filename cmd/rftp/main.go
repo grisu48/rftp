@@ -10,10 +10,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	"anonftp/cmd/rftp/config"
-	"anonftp/cmd/rftp/logger"
-	"anonftp/cmd/rftp/security"
-	"anonftp/cmd/rftp/server"
+	"github.com/grisu48/rftp/cmd/rftp/config"
+	"github.com/grisu48/rftp/cmd/rftp/logger"
+	"github.com/grisu48/rftp/cmd/rftp/security"
+	"github.com/grisu48/rftp/cmd/rftp/server"
 )
 
 func main() {

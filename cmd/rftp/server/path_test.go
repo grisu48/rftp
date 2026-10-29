@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"anonftp/cmd/rftp/config"
+	"github.com/grisu48/rftp/cmd/rftp/config"
 )
 
 func TestResolvePath(t *testing.T) {

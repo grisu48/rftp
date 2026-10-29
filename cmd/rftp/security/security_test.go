@@ -56,9 +56,9 @@ func TestRemountReadOnlyNonexistentDirFails(t *testing.T) {
 // exercised in a child process. The parent asserts on the child's exit code.
 
 // TestHelperProcess is not a real test; it runs in a child process when
-// GO_ANONFTP_HELPER is set. See the Test*HelperProcess functions below.
+// GO_RFTP_HELPER is set. See the Test*HelperProcess functions below.
 func TestHelperProcess(t *testing.T) {
-	switch os.Getenv("GO_ANONFTP_HELPER") {
+	switch os.Getenv("GO_RFTP_HELPER") {
 	case "chroot":
 		helperChroot(t)
 	case "privdrop":
@@ -80,10 +80,10 @@ func TestHelperProcess(t *testing.T) {
 	}
 }
 
-// helperChroot chroots into GO_ANONFTP_DIR and verifies the process root
+// helperChroot chroots into GO_RFTP_DIR and verifies the process root
 // contains exactly the chroot directory's contents.
 func helperChroot(t *testing.T) {
-	dir := os.Getenv("GO_ANONFTP_DIR")
+	dir := os.Getenv("GO_RFTP_DIR")
 	if err := Chroot(dir); err != nil {
 		fmt.Fprintf(os.Stderr, "chroot: %v\n", err)
 		os.Exit(1)
@@ -125,7 +125,7 @@ func TestChrootAsRoot(t *testing.T) {
 	}
 
 	cmd := exec.Command(os.Args[0], "-test.run=TestHelperProcess")
-	cmd.Env = append(os.Environ(), "GO_ANONFTP_HELPER=chroot", "GO_ANONFTP_DIR="+chrootDir)
+	cmd.Env = append(os.Environ(), "GO_RFTP_HELPER=chroot", "GO_RFTP_DIR="+chrootDir)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("chroot helper failed: %v\n%s", err, out)
@@ -134,8 +134,8 @@ func TestChrootAsRoot(t *testing.T) {
 
 // helperPrivDrop drops privileges and verifies the process is no longer root.
 func helperPrivDrop(t *testing.T) {
-	user := os.Getenv("GO_ANONFTP_USER")
-	group := os.Getenv("GO_ANONFTP_GROUP")
+	user := os.Getenv("GO_RFTP_USER")
+	group := os.Getenv("GO_RFTP_GROUP")
 	if err := DropPrivileges(user, group); err != nil {
 		fmt.Fprintf(os.Stderr, "DropPrivileges: %v\n", err)
 		os.Exit(1)
@@ -165,9 +165,9 @@ func TestDropPrivilegesAsRoot(t *testing.T) {
 	}
 	cmd := exec.Command(os.Args[0], "-test.run=TestHelperProcess")
 	cmd.Env = append(os.Environ(),
-		"GO_ANONFTP_HELPER=privdrop",
-		"GO_ANONFTP_USER=nobody",
-		"GO_ANONFTP_GROUP=nogroup",
+		"GO_RFTP_HELPER=privdrop",
+		"GO_RFTP_USER=nobody",
+		"GO_RFTP_GROUP=nogroup",
 	)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -175,12 +175,12 @@ func TestDropPrivilegesAsRoot(t *testing.T) {
 	}
 }
 
-// helperMount re-mounts GO_ANONFTP_DIR read-only and verifies that writes
+// helperMount re-mounts GO_RFTP_DIR read-only and verifies that writes
 // to it fail. If the environment forbids mounting (e.g. unprivileged
 // container without CAP_SYS_ADMIN), it exits with code 42 so the parent
 // can skip.
 func helperMount(t *testing.T) {
-	dir := os.Getenv("GO_ANONFTP_DIR")
+	dir := os.Getenv("GO_RFTP_DIR")
 	if err := RemountReadOnly(dir); err != nil {
 		fmt.Fprintf(os.Stderr, "RemountReadOnly: %v\n", err)
 		os.Exit(42) // environment does not allow mounting
@@ -198,7 +198,7 @@ func TestRemountReadOnlyAsRoot(t *testing.T) {
 		t.Skip("read-only mount test requires root")
 	}
 	cmd := exec.Command(os.Args[0], "-test.run=TestHelperProcess")
-	cmd.Env = append(os.Environ(), "GO_ANONFTP_HELPER=mount", "GO_ANONFTP_DIR="+t.TempDir())
+	cmd.Env = append(os.Environ(), "GO_RFTP_HELPER=mount", "GO_RFTP_DIR="+t.TempDir())
 	out, err := cmd.CombinedOutput()
 	if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 42 {
 		t.Skipf("mounting not permitted in this environment: %s", out)

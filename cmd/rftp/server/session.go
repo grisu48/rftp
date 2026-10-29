@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"anonftp/cmd/rftp/ftp"
-	"anonftp/cmd/rftp/logger"
+	"github.com/grisu48/rftp/cmd/rftp/ftp"
+	"github.com/grisu48/rftp/cmd/rftp/logger"
 )
 
 const (

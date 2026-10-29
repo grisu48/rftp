@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"anonftp/cmd/rftp/logger"
+	"github.com/grisu48/rftp/cmd/rftp/logger"
 )
 
 // DefaultUser and DefaultGroup are the privilege drop targets used when

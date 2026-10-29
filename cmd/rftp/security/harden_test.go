@@ -123,10 +123,10 @@ func TestApplyAsRootHardeningSucceeds(t *testing.T) {
 
 	cmd := exec.Command(os.Args[0], "-test.run=TestHelperProcess")
 	cmd.Env = append(os.Environ(),
-		"GO_ANONFTP_HELPER=harden-ok",
-		"GO_ANONFTP_DIR="+jail,
-		"GO_ANONFTP_USER=nobody",
-		"GO_ANONFTP_GROUP=nogroup",
+		"GO_RFTP_HELPER=harden-ok",
+		"GO_RFTP_DIR="+jail,
+		"GO_RFTP_USER=nobody",
+		"GO_RFTP_GROUP=nogroup",
 	)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -141,7 +141,7 @@ func TestApplyAsRootDefaultsToNobody(t *testing.T) {
 	// With no user/group configured (both optional), a root start must drop
 	// to the default nobody/nogroup — never serve as root.
 	cmd := exec.Command(os.Args[0], "-test.run=TestHelperProcess")
-	cmd.Env = append(os.Environ(), "GO_ANONFTP_HELPER=harden-defaults")
+	cmd.Env = append(os.Environ(), "GO_RFTP_HELPER=harden-defaults")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("harden-defaults helper failed: %v\n%s", err, out)
@@ -157,7 +157,7 @@ func TestApplyAsRootFailuresAreFatal(t *testing.T) {
 	for _, mode := range []string{"harden-chroot-fail", "harden-mount-fail", "harden-privdrop-fail"} {
 		t.Run(mode, func(t *testing.T) {
 			cmd := exec.Command(os.Args[0], "-test.run=TestHelperProcess")
-			cmd.Env = append(os.Environ(), "GO_ANONFTP_HELPER="+mode)
+			cmd.Env = append(os.Environ(), "GO_RFTP_HELPER="+mode)
 			out, err := cmd.CombinedOutput()
 			if err != nil {
 				t.Fatalf("helper %s failed: %v\n%s", mode, err, out)
@@ -172,9 +172,9 @@ func TestApplyAsRootFailuresAreFatal(t *testing.T) {
 // drop) and verifies the process ended up chrooted and unprivileged.
 func helperHardenOK(t *testing.T) {
 	serveDir, err := Apply(Hardening{
-		ServeDir:      os.Getenv("GO_ANONFTP_DIR"),
-		User:          os.Getenv("GO_ANONFTP_USER"),
-		Group:         os.Getenv("GO_ANONFTP_GROUP"),
+		ServeDir:      os.Getenv("GO_RFTP_DIR"),
+		User:          os.Getenv("GO_RFTP_USER"),
+		Group:         os.Getenv("GO_RFTP_GROUP"),
 		Chroot:        true,
 		ReadOnlyMount: false,
 	})
@@ -244,7 +244,7 @@ func helperHardenDefaults(t *testing.T) {
 // Apply returns an error (fail-closed) instead of continuing.
 func helperHardenFail(t *testing.T, mode string) {
 	h := Hardening{
-		ServeDir: filepath.Join(os.TempDir(), "anonftp-harden-nonexistent-xyz"),
+		ServeDir: filepath.Join(os.TempDir(), "rftp-harden-nonexistent-xyz"),
 		User:     "nobody",
 		Group:    "nogroup",
 	}

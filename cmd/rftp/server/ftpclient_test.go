@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"anonftp/cmd/rftp/config"
-	"anonftp/cmd/rftp/logger"
+	"github.com/grisu48/rftp/cmd/rftp/config"
+	"github.com/grisu48/rftp/cmd/rftp/logger"
 )
 
 func TestMain(m *testing.M) {

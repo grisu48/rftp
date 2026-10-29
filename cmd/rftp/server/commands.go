@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"strings"
 
-	"anonftp/cmd/rftp/ftp"
-	"anonftp/cmd/rftp/logger"
+	"github.com/grisu48/rftp/cmd/rftp/ftp"
+	"github.com/grisu48/rftp/cmd/rftp/logger"
 )
 
 // preLoginCommands may be used before USER/PASS completes.

@@ -1,4 +1,4 @@
-# anonftp
+# rftp
 
 A minimal, security-focused, **read-only anonymous FTP server** written in Go.
 It serves a single directory over plain FTP (no TLS) with dual-stack IPv4/IPv6
