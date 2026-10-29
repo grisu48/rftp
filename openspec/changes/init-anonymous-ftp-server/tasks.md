@@ -13,6 +13,7 @@
 - [x] 2.3 Add config defaults (passive disabled, sensible ports)
 - [x] 2.4 Validate serve directory exists and is readable
 - [x] 2.5 Add unit tests for config parsing
+- [x] 2.6 Make `user`/`group` optional (default `nobody`/`nogroup` when unset)
 
 ## 3. Security Layer
 - [x] 3.1 Implement chroot functionality (`security/chroot.go`)

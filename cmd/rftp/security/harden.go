@@ -9,6 +9,13 @@ import (
 	"anonftp/cmd/rftp/logger"
 )
 
+// DefaultUser and DefaultGroup are the privilege drop targets used when
+// user/group are not configured (both configuration fields are optional).
+const (
+	DefaultUser  = "nobody"
+	DefaultGroup = "nogroup"
+)
+
 // Hardening configures the startup security hardening sequence.
 type Hardening struct {
 	// ServeDir is the directory to serve; it becomes "/" after chroot.
@@ -38,10 +45,10 @@ func Apply(h Hardening) (string, error) {
 
 	if !IsRoot() {
 		if h.Chroot {
-			return "", fmt.Errorf("chroot is enabled but requires root (start as root or set chroot: false)")
+			return "", fmt.Errorf("secure by default: chroot is enabled but requires root (start as root or set chroot: false)")
 		}
 		if h.ReadOnlyMount {
-			return "", fmt.Errorf("read_only_mount is enabled but requires root (start as root or set read_only_mount: false)")
+			return "", fmt.Errorf("secure by default: read_only_mount is enabled but requires root (start as root or set read_only_mount: false)")
 		}
 		logger.Warn("not running as root (uid=%d): no root privileges to drop; chroot and read-only mount are disabled by configuration", os.Getuid())
 		return serveDir, nil
@@ -49,7 +56,7 @@ func Apply(h Hardening) (string, error) {
 
 	if h.Chroot {
 		if err := Chroot(serveDir); err != nil {
-			return "", fmt.Errorf("chroot failed (fatal): %w", err)
+			return "", fmt.Errorf("secure by default: chroot failed (fatal): %w", err)
 		}
 		// After chroot the served directory is the process root.
 		serveDir = "/"
@@ -57,16 +64,25 @@ func Apply(h Hardening) (string, error) {
 	}
 	if h.ReadOnlyMount {
 		if err := RemountReadOnly(serveDir); err != nil {
-			return "", fmt.Errorf("read-only mount failed (fatal): %w", err)
+			return "", fmt.Errorf("secure by default: read-only mount failed (fatal): %w", err)
 		}
 		logger.Info("served directory re-mounted read-only dir=%s", serveDir)
 	}
 	// Privilege dropping is never skipped when running as root: if it fails,
-	// the program must exit rather than serve as root.
-	if err := DropPrivileges(h.User, h.Group); err != nil {
-		return "", fmt.Errorf("privilege drop failed (fatal): %w", err)
+	// the program must exit rather than serve as root. The drop target is the
+	// configured user/group, or the default nobody/nogroup when not configured
+	// (user and group are both optional configuration fields).
+	user, group := h.User, h.Group
+	if user == "" {
+		user = DefaultUser
 	}
-	logger.Info("dropped privileges user=%s group=%s", h.User, h.Group)
+	if group == "" {
+		group = DefaultGroup
+	}
+	if err := DropPrivileges(user, group); err != nil {
+		return "", fmt.Errorf("secure by default: privilege drop failed (fatal): %w", err)
+	}
+	logger.Info("dropped privileges user=%s group=%s", user, group)
 
 	return serveDir, nil
 }

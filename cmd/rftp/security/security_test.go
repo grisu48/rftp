@@ -67,6 +67,8 @@ func TestHelperProcess(t *testing.T) {
 		helperMount(t)
 	case "harden-ok":
 		helperHardenOK(t)
+	case "harden-defaults":
+		helperHardenDefaults(t)
 	case "harden-chroot-fail":
 		helperHardenFail(t, "chroot")
 	case "harden-mount-fail":

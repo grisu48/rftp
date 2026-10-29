@@ -178,18 +178,55 @@ func TestValidatePassivePortRange(t *testing.T) {
 	}
 }
 
-func TestValidateUserGroupRequired(t *testing.T) {
+func TestValidateUserGroupOptional(t *testing.T) {
+	// user/group are optional: when unset or explicitly empty they fall
+	// back to the unprivileged defaults and must NOT be reported as missing.
 	cfg := Default()
 	cfg.ServeDir = t.TempDir()
 	cfg.User = ""
-	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "user is required") {
-		t.Errorf("expected user required error, got: %v", err)
+	cfg.Group = ""
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate with empty user/group must succeed: %v", err)
 	}
+	if cfg.User != "nobody" || cfg.Group != "nogroup" {
+		t.Errorf("user/group = %q/%q, want defaults nobody/nogroup", cfg.User, cfg.Group)
+	}
+
+	// Explicitly configured values are preserved.
 	cfg = Default()
 	cfg.ServeDir = t.TempDir()
+	cfg.User = "ftpd"
+	cfg.Group = "ftp"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if cfg.User != "ftpd" || cfg.Group != "ftp" {
+		t.Errorf("user/group = %q/%q, want configured ftpd/ftp", cfg.User, cfg.Group)
+	}
+
+	// Only one of them set: the other falls back to its default.
+	cfg = Default()
+	cfg.ServeDir = t.TempDir()
+	cfg.User = "ftpd"
 	cfg.Group = ""
-	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "group is required") {
-		t.Errorf("expected group required error, got: %v", err)
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate with only user set: %v", err)
+	}
+	if cfg.User != "ftpd" || cfg.Group != "nogroup" {
+		t.Errorf("user/group = %q/%q, want ftpd/nogroup", cfg.User, cfg.Group)
+	}
+}
+
+func TestLoadUserGroupExplicitlyEmpty(t *testing.T) {
+	// Explicitly empty user/group in the YAML file must be accepted.
+	dir := t.TempDir()
+	path := writeTempConfig(t, "serve_dir: "+dir+"\nuser: \"\"\ngroup: \"\"\n")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load with explicitly empty user/group must succeed: %v", err)
+	}
+	if cfg.User != "nobody" || cfg.Group != "nogroup" {
+		t.Errorf("user/group = %q/%q, want defaults nobody/nogroup", cfg.User, cfg.Group)
 	}
 }
 

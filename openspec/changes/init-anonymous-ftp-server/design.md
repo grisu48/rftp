@@ -52,14 +52,19 @@ passive_port_max: 40100
 
 # Security settings
 serve_dir: /srv/ftp         # Directory to serve (will be chrooted)
-user: nobody                # User to drop privileges to
-group: nogroup              # Group to drop privileges to
+user: nobody                # Optional: user to drop privileges to (default: nobody)
+group: nogroup              # Optional: group to drop privileges to (default: nogroup)
 chroot: true                # Chroot into serve_dir (requires root)
 read_only_mount: true       # Re-mount serve_dir as read-only
 
 # Logging
 log_level: info             # debug, info, warn, error
 ```
+
+Only `listen_addr` and `serve_dir` are required. `user` and `group` are
+**optional**: when omitted (or set to an empty value) they default to
+`nobody`/`nogroup`, which is the privilege drop target used when the server
+runs as root.
 
 ### Decision: Privilege dropping and chroot sequence
 **What**: When running as root, perform security hardening in this order:
@@ -88,7 +93,7 @@ never continues serving in a degraded security posture (see *Secure by default*)
 **What**: The server MUST apply every configured security measure or fail:
 - `chroot: true` (default): chroot into `serve_dir`; if chroot fails, **exit with non-zero status**
 - `read_only_mount: true` (default): re-mount `serve_dir` read-only; if the re-mount fails, **exit with non-zero status**
-- Privilege dropping: when the server starts as root it MUST drop to the configured `user`/`group` before serving; if the drop fails, **exit with non-zero status**
+- Privilege dropping: when the server starts as root it MUST drop privileges before serving — to the configured `user`/`group`, or to the default `nobody`/`nogroup` when they are not configured (`user` and `group` are both optional); if the drop fails, **exit with non-zero status**
 - Starting as non-root while `chroot: true` or `read_only_mount: true` is configured: the measure cannot be applied, so the server **refuses to start** (exit non-zero). The operator must either start as root or explicitly set the measure to `false`.
 - Starting as non-root with `chroot: false` and `read_only_mount: false`: the process is already unprivileged, so there are no root privileges to drop — the privilege-drop goal is satisfied. The server logs this explicitly (it is not a silent skip) and continues.
 

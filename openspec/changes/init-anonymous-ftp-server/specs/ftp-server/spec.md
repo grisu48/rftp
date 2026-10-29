@@ -64,6 +64,10 @@ The server MUST drop root privileges after binding to the port and performing ch
 - **WHEN** the server starts as root
 - **THEN** the server binds to the port, chroots, then drops to the configured user/group before accepting connections
 
+#### Scenario: Privilege drop target defaults when user/group are not configured
+- **WHEN** the server starts as root without `user` or `group` configured (both are optional)
+- **THEN** the server drops privileges to the default `nobody`/`nogroup` before serving, and exits with non-zero status if the drop fails
+
 #### Scenario: Privilege drop failure is fatal
 - **WHEN** privilege dropping fails
 - **THEN** the server logs an error and exits with non-zero status
@@ -171,8 +175,12 @@ The server MUST accept a single YAML configuration file as a command-line argume
 - **THEN** the server logs an error and exits with non-zero status
 
 #### Scenario: Missing required config
-- **WHEN** required config fields are missing
+- **WHEN** required config fields (`listen_addr`, `serve_dir`) are missing
 - **THEN** the server logs an error indicating which fields are missing and exits
+
+#### Scenario: Optional user/group omitted
+- **WHEN** `user` and `group` are omitted (or explicitly set to an empty value) in the config file
+- **THEN** the server accepts the configuration and uses the defaults `nobody`/`nogroup` as the privilege drop target
 
 ---
 

@@ -99,11 +99,14 @@ func (c *Config) Validate() error {
 	}
 	f.Close()
 
+	// user/group are optional: when unset (or explicitly empty) they fall
+	// back to the unprivileged defaults (keep in sync with
+	// security.DefaultUser / security.DefaultGroup).
 	if c.User == "" {
-		return fmt.Errorf("user is required")
+		c.User = "nobody"
 	}
 	if c.Group == "" {
-		return fmt.Errorf("group is required")
+		c.Group = "nogroup"
 	}
 
 	switch c.LogLevel {

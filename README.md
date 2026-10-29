@@ -79,13 +79,18 @@ passive_port_min: 40000
 passive_port_max: 40100
 
 serve_dir: /srv/ftp         # directory to serve (chrooted when root)
-user: nobody                # privilege drop target
-group: nogroup
+user: nobody                # optional: privilege drop target (default: nobody)
+group: nogroup              # optional: privilege drop target (default: nogroup)
 chroot: true
 read_only_mount: true
 
 log_level: info             # debug, info, warn, error
 ```
+
+Only `listen_addr` and `serve_dir` are required. `user` and `group` are
+**optional**: when omitted (or empty) they default to `nobody`/`nogroup`. The
+server still never serves as root — when started as root it always drops
+privileges (to the configured or default target) or exits.
 
 - Info/debug logs go to **stdout**, warnings/errors go to **stderr**. No log
   files are written.

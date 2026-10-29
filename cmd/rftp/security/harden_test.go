@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -88,6 +90,22 @@ func TestApplyNonRootMeasuresDisabledSucceeds(t *testing.T) {
 	}
 }
 
+func TestApplyNonRootEmptyUserGroupSucceeds(t *testing.T) {
+	if IsRoot() {
+		t.Skip("test only meaningful when not running as root")
+	}
+	// user/group are optional: an unprivileged start must succeed even with
+	// no privilege drop target configured at all.
+	dir := t.TempDir()
+	serveDir, err := Apply(Hardening{ServeDir: dir})
+	if err != nil {
+		t.Fatalf("Apply with empty user/group should succeed: %v", err)
+	}
+	if serveDir != dir {
+		t.Errorf("serveDir = %q, want unchanged %q", serveDir, dir)
+	}
+}
+
 // --- Root behavior (fail-closed), via subprocess helpers ----------------------
 
 func TestApplyAsRootHardeningSucceeds(t *testing.T) {
@@ -113,6 +131,20 @@ func TestApplyAsRootHardeningSucceeds(t *testing.T) {
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("harden-ok helper failed: %v\n%s", err, out)
+	}
+}
+
+func TestApplyAsRootDefaultsToNobody(t *testing.T) {
+	if !IsRoot() {
+		t.Skip("default privilege drop target test requires root")
+	}
+	// With no user/group configured (both optional), a root start must drop
+	// to the default nobody/nogroup — never serve as root.
+	cmd := exec.Command(os.Args[0], "-test.run=TestHelperProcess")
+	cmd.Env = append(os.Environ(), "GO_ANONFTP_HELPER=harden-defaults")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("harden-defaults helper failed: %v\n%s", err, out)
 	}
 }
 
@@ -162,6 +194,48 @@ func helperHardenOK(t *testing.T) {
 	if err != nil || wd != "/" {
 		fmt.Fprintf(os.Stderr, "getwd = %q, %v; want /\n", wd, err)
 		os.Exit(4)
+	}
+	os.Exit(0)
+}
+
+// helperHardenDefaults applies hardening with an empty (unconfigured)
+// user/group and verifies the process dropped to the default nobody/nogroup.
+func helperHardenDefaults(t *testing.T) {
+	if _, err := Apply(Hardening{ServeDir: t.TempDir()}); err != nil {
+		fmt.Fprintf(os.Stderr, "Apply: %v\n", err)
+		os.Exit(1)
+	}
+	if os.Getuid() == 0 || os.Geteuid() == 0 {
+		fmt.Fprintf(os.Stderr, "still root after Apply (privilege drop skipped!)\n")
+		os.Exit(2)
+	}
+	u, err := user.Lookup(DefaultUser)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "lookup default user %s: %v\n", DefaultUser, err)
+		os.Exit(3)
+	}
+	wantUID, err := strconv.Atoi(u.Uid)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "parse uid: %v\n", err)
+		os.Exit(3)
+	}
+	if os.Getuid() != wantUID {
+		fmt.Fprintf(os.Stderr, "uid = %d, want %d (default user %s)\n", os.Getuid(), wantUID, DefaultUser)
+		os.Exit(4)
+	}
+	g, err := user.LookupGroup(DefaultGroup)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "lookup default group %s: %v\n", DefaultGroup, err)
+		os.Exit(3)
+	}
+	wantGID, err := strconv.Atoi(g.Gid)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "parse gid: %v\n", err)
+		os.Exit(3)
+	}
+	if os.Getgid() != wantGID {
+		fmt.Fprintf(os.Stderr, "gid = %d, want %d (default group %s)\n", os.Getgid(), wantGID, DefaultGroup)
+		os.Exit(5)
 	}
 	os.Exit(0)
 }
