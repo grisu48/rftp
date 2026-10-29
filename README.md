@@ -1,5 +1,7 @@
 # rftp
 
+**Note: This project is an experiment. This software is probably not safe. Do not  use it.**
+
 A minimal, security-focused, **read-only anonymous FTP server** written in Go.
 It serves a single directory over plain FTP (no TLS) with dual-stack IPv4/IPv6
 support, and hardens itself at startup by chrooting into the served directory,
