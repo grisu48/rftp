@@ -150,3 +150,12 @@ integration tests cover the FTP protocol end-to-end (login, listings, retrieval,
 active/passive mode, rejected write commands, traversal and symlink blocking);
 security tests cover chroot and privilege dropping (root-only tests skip when
 not run as root).
+
+## Contributing
+
+See [Agents.md](Agents.md) for build/test instructions, project conventions and
+the specification workflow.
+
+## License
+
+MIT — see [LICENSE](LICENSE).

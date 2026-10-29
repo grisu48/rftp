@@ -100,6 +100,8 @@
 - [x] 14.3 Document security model (chroot, privilege drop, read-only)
 - [x] 14.4 Document IPv4/IPv6 setup
 - [x] 14.5 Add deployment notes (systemd unit example)
+- [x] 14.6 Add MIT license (`LICENSE`, SPDX headers in sources)
+- [x] 14.7 Add `Agents.md` with agent/contributor instructions
 
 ## 15. Build & Distribution
 - [x] 15.1 Verify `go build` works

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 // Package ftp contains FTP protocol constants, helpers and data types (RFC 959).
 package ftp
 

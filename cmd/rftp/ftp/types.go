@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 package ftp
 
 // DataMode describes how a data connection is established.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 // Package logger provides a minimal leveled logger that writes
 // info/debug messages to stdout and warnings/errors to stderr.
 package logger

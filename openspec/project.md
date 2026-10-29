@@ -49,3 +49,6 @@ A minimal, security-focused, read-only anonymous FTP server written in Go. The s
 ## External Dependencies
 - YAML parsing library only (e.g., `gopkg.in/yaml.v3`)
 - All other functionality uses Go standard library
+
+## License
+- MIT (see `LICENSE`)

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 // Package config handles loading and validation of the YAML configuration file.
 package config
 

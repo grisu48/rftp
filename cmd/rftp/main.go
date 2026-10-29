@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 // Command rftp is a minimal, security-focused, read-only anonymous FTP
 // server. It serves a single directory over plain FTP with dual-stack
 // IPv4/IPv6 support, dropping privileges and chrooting when run as root.

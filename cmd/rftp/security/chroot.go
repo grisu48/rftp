@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 //go:build linux
 
 // Package security implements the privilege-dropping, chroot and
