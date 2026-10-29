@@ -1,0 +1,123 @@
+# anonftp
+
+A minimal, security-focused, **read-only anonymous FTP server** written in Go.
+It serves a single directory over plain FTP (no TLS) with dual-stack IPv4/IPv6
+support, and hardens itself at startup by chrooting into the served directory,
+re-mounting it read-only, and dropping root privileges.
+
+## Features
+
+- **Anonymous only** — accepts `anonymous` or `ftp` with any password; all other
+  user names are rejected and the connection is closed.
+- **Read-only** — only read operations are implemented. Upload, delete, rename
+  and directory creation (`STOR`, `APPE`, `STOU`, `DELE`, `RNFR`, `RNTO`,
+  `MKD`, `RMD`, `SITE`) are rejected with `550 Read-only file system`.
+- **Single directory** — one root directory is served; path traversal above the
+  root (`CWD ../../etc`) and symlinks pointing outside the root are blocked with
+  `550 Access denied`.
+- **Dual-stack** — listens on both IPv4 and IPv6 via a single dual-stack socket.
+- **Active and passive mode** — `PORT`/`EPRT` (active) always supported;
+  `PASV`/`EPSV` (passive) disabled by default, enable via configuration.
+- **Security hardening** — when started as root: bind → chroot → read-only
+  re-mount → drop privileges to a non-privileged user. Privilege drop failure
+  is fatal.
+- **Plain FTP only** — `AUTH TLS`/`PROT` are rejected with `502 TLS not supported`.
+- **Minimal dependencies** — Go standard library plus `gopkg.in/yaml.v3` only.
+
+## Supported commands
+
+| Category     | Commands                                                        |
+|--------------|-----------------------------------------------------------------|
+| Connection   | `USER`, `PASS`, `QUIT`, `NOOP`                                   |
+| Navigation   | `PWD`, `CWD`, `CDUP`, `TYPE`, `MODE`, `STRU`                     |
+| Information  | `SYST`, `FEAT`, `HELP`, `SIZE`, `MDTM`, `OPTS UTF8 ON`           |
+| Transfers    | `LIST`, `NLST`, `RETR`                                           |
+| Data setup   | `PORT`, `EPRT`, `PASV`, `EPSV` (passive only when enabled)       |
+
+## Building
+
+```sh
+go build -o anonftp .
+go vet ./...
+go test ./...
+```
+
+## Running
+
+```sh
+sudo ./anonftp -config config.example.yaml
+```
+
+Running as root is recommended: it enables chroot, the read-only re-mount and
+privilege dropping. When started as a non-root user the server logs a warning and
+skips chroot/privilege drop, but still serves the directory read-only.
+
+### Configuration
+
+All configuration lives in a single YAML file (see
+[`config.example.yaml`](config.example.yaml)):
+
+```yaml
+listen_addr: ":21"          # dual-stack IPv4/IPv6
+passive_enabled: false      # PASV/EPSV disabled by default
+passive_port_min: 40000
+passive_port_max: 40100
+
+serve_dir: /srv/ftp         # directory to serve (chrooted when root)
+user: nobody                # privilege drop target
+group: nogroup
+chroot: true
+read_only_mount: true
+
+log_level: info             # debug, info, warn, error
+```
+
+- Info/debug logs go to **stdout**, warnings/errors go to **stderr**. No log
+  files are written.
+- A missing/unreadable config file, invalid YAML, or missing required fields
+  (`listen_addr`, `serve_dir`) cause the server to log an error and exit with a
+  non-zero status.
+- `SIGTERM`/`SIGINT` trigger a graceful shutdown: the listener is closed and all
+  active connections are closed before exiting with status 0.
+
+## Security model
+
+1. Bind the control port (needs root for ports < 1024).
+2. `chroot` into `serve_dir` (fatal on failure when enabled).
+3. Re-mount `serve_dir` read-only (warn and continue on failure).
+4. Drop privileges to `user`/`group` (fatal on failure).
+5. Serve read-only, validating every path and rejecting symlink escapes.
+
+Even without root, the server refuses all write commands and blocks path
+traversal, so the served directory is never modified.
+
+## Deployment (systemd)
+
+```ini
+[Unit]
+Description=anonftp - read-only anonymous FTP server
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/anonftp -config /etc/anonftp/config.yaml
+User=root
+AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_SYS_CHROOT
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadOnlyPaths=/srv/ftp
+
+[Install]
+WantedBy=multi-user.target
+```
+
+## Testing
+
+```sh
+go test ./...
+```
+
+Unit tests cover configuration parsing, path sanitization and command parsing;
+integration tests cover the FTP protocol end-to-end (login, listings, retrieval,
+active/passive mode, rejected write commands, traversal and symlink blocking);
+security tests cover chroot and privilege dropping (root-only tests skip when
+not run as root).
