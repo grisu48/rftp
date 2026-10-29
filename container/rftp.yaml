@@ -1,0 +1,15 @@
+# Minimal default configuration for the rftp container image.
+#
+# The image runs unprivileged (uid/gid 65534) in a scratch container, so the
+# root-only security measures are disabled here; the server is still read-only
+# and rejects all write commands. Mount your data at /ftp and your own
+# configuration at /conf/rftp.yaml — see the "Container image" section in
+# README.md.
+
+listen_addr: ":2121"        # FTP control port inside the container (unprivileged port)
+serve_dir: /ftp             # served directory (mount your data here)
+chroot: false               # requires root; the container runs unprivileged
+read_only_mount: false      # requires root; the container runs unprivileged
+passive_enabled: false      # passive mode (PASV/EPSV) disabled by default
+log_level: info             # debug, info, warn, error
+# user/group are optional (default: nobody/nogroup); unused when unprivileged

@@ -141,6 +141,53 @@ ReadOnlyPaths=/srv/ftp
 WantedBy=multi-user.target
 ```
 
+## Container image
+
+A `Containerfile` builds a minimal image: a **scratch** runtime stage that
+contains only the `rftp` binary, a default configuration, and default content.
+The build stage uses `registry.opensuse.org/opensuse/bci/golang`.
+
+| Path in container | Purpose                                                        |
+|-------------------|----------------------------------------------------------------|
+| `/rftp`           | the rftp binary — the image **entrypoint**                     |
+| `/conf/rftp.yaml` | configuration file (a minimal default is provided; mount yours) |
+| `/ftp`            | served FTP data directory (mount your data here)               |
+
+Build and run with Podman (or Docker with `docker build -f Containerfile`):
+
+```sh
+podman build -t rftp .
+podman run -d --name rftp \
+  -p 2121:2121 \
+  -v /srv/ftp:/ftp:ro \
+  -v /etc/rftp:/conf:ro \
+  rftp
+```
+
+Then connect with any anonymous FTP client, e.g. `ftp localhost 2121` or
+`curl ftp://localhost:2121/`.
+
+- **Data — use `/ftp`**: mount the directory you want to serve at **`/ftp`**
+  (read-only recommended, e.g. `-v /srv/ftp:/ftp:ro`). Without a mount, only
+  the bundled `README.md` is served.
+- **Configuration — use `/conf/rftp.yaml`**: put your configuration at
+  **`/conf/rftp.yaml`** — mount a directory containing `rftp.yaml` at `/conf`,
+  or override the default command, e.g. `podman run ... rftp -config
+  /conf/custom.yaml`. See `config.example.yaml` for all options and
+  `container/rftp.yaml` for the shipped default.
+- **Port**: the default configuration listens on `:2121` inside the container
+  (the image runs unprivileged, so ports < 1024 are unavailable). Publish it
+  with `-p 2121:2121`, or any host port you prefer, e.g. `-p 21:2121`.
+- **Permissions**: the container runs as uid/gid `65534` (nobody). Files under
+  `/ftp` must be readable by that uid (world-readable works).
+- **Passive mode**: disabled by default. To enable it, set `passive_enabled:
+  true` in your configuration and publish the passive port range
+  (`passive_port_min`–`passive_port_max`), e.g. `-p 40000-40100:40000-40100`.
+
+The image runs unprivileged in a scratch container: `chroot` and
+`read_only_mount` are disabled in the default configuration because they
+require root. The server is still read-only and rejects all write commands.
+
 ## Testing
 
 ```sh

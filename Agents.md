@@ -18,7 +18,10 @@ cmd/rftp/
 ├── logger/        # leveled logging (info/debug -> stdout, warn/error -> stderr)
 ├── security/      # Linux hardening: chroot, read-only mount, privilege drop, fail-closed Apply
 └── server/        # dual-stack listener, server lifecycle, sessions, command handlers, passive ports
+container/
+└── rftp.yaml      # minimal default configuration shipped in the container image
 openspec/          # OpenSpec change: proposal, design, capability spec, tasks (source of truth)
+Containerfile      # multi-stage build: BCI golang build stage, scratch runtime stage
 ```
 
 ## Build, vet, test

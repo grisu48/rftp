@@ -108,3 +108,4 @@
 - [x] 15.2 Verify `go vet` passes
 - [x] 15.3 Verify `gofmt` formatting
 - [x] 15.4 Create release build script (optional)
+- [x] 15.5 Add `Containerfile` (BCI golang build stage, scratch runtime, default config, docs)
