@@ -25,6 +25,6 @@ COPY README.md /ftp/README.md
 # Run unprivileged. A scratch image has no /etc/passwd, so use a numeric
 # uid/gid (65534 = nobody). Data under /ftp must be readable by this uid.
 USER 65534:65534
-EXPOSE 21/tcp
+EXPOSE 2121/tcp
 ENTRYPOINT ["/rftp"]
 CMD ["-config", "/conf/rftp.yaml"]

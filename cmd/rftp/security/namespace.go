@@ -152,6 +152,8 @@ func fexecve(fd int, argv, envv []string) error {
 	if err != nil {
 		return err
 	}
+	// #nosec G103 -- raw execveat(2) requires unsafe pointer conversion; audited:
+	// argv/envp are NULL-terminated byte-pointer slices kept alive below.
 	_, _, errno := syscall.Syscall6(no,
 		uintptr(fd),
 		uintptr(unsafe.Pointer(empty)),

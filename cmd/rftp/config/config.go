@@ -64,6 +64,7 @@ const InlineEnv = "RFTP_CONFIG"
 // Load reads, parses and validates the configuration file at path.
 // Missing files, invalid YAML and invalid values are reported as errors.
 func Load(path string) (*Config, error) {
+	// #nosec G304 -- path is the operator-supplied -config flag value, not remote input.
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read config file %s: %w", path, err)
@@ -125,7 +126,7 @@ func (c *Config) Validate() error {
 	if err != nil {
 		return fmt.Errorf("serve_dir %q is not readable: %w", c.ServeDir, err)
 	}
-	f.Close()
+	_ = f.Close()
 
 	// user/group are optional: when unset (or explicitly empty) they fall
 	// back to the unprivileged defaults (keep in sync with

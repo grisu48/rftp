@@ -68,7 +68,15 @@ disabled by default (`passive_enabled: false`).
   the system; the config is passed to the re-executed image via the
   `RFTP_CONFIG` env var (`config.InlineEnv`).
 - **Path safety**: traversal above the served root (`CWD ../../etc`) and
-  symlinks escaping it are rejected with `550 Access denied`.
+  symlinks escaping it are rejected with `550 Access denied`. All file access
+  goes through an `os.Root` scoped to the served root (via `Session.scoped`),
+  so the check-then-open sequence has no TOCTOU window.
+- **Anti FTP-bounce (CWE-441)**: `PORT`/`EPRT`/`LPRT` addresses must match the
+  control connection peer (`Session.checkDataAddr`), else `501`; passive data
+  connections are only accepted from the control peer.
+- **Bounded input**: command lines are capped at `maxLineLen` (8 KiB) using a
+  bounded `bufio` buffer; overlong lines get `500 Command line too long` and
+  the session continues.
 - **Plain FTP only**: `AUTH TLS`/`PROT`/`PBSZ` are rejected with
   `502 TLS not supported`.
 

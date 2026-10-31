@@ -17,7 +17,16 @@ system is unaffected), and dropping root privileges.
   `MKD`, `RMD`, `SITE`) are rejected with `550 Read-only file system`.
 - **Single directory** — one root directory is served; path traversal above the
   root (`CWD ../../etc`) and symlinks pointing outside the root are blocked with
-  `550 Access denied`.
+  `550 Access denied`. File access goes through an `os.Root` scoped to the served
+  directory, so a symlink swapped in after the policy check cannot escape it
+  (no check-then-open race).
+- **Anti FTP-bounce** — the data address in `PORT`/`EPRT`/`LPRT` must match the
+  control connection's peer, otherwise the command is rejected with `501`. The
+  server cannot be abused to connect to arbitrary third-party hosts/ports.
+- **Bounded input** — command lines are capped at 8 KiB; overlong lines are
+  rejected with `500` (the remainder is drained, the session stays usable), so a
+  client cannot exhaust memory with an unterminated line. Passive data connections
+  are only accepted from the control connection's peer.
 - **Dual-stack** — listens on both IPv4 and IPv6 via a single dual-stack socket.
 - **Active and passive mode** — `PORT`/`EPRT`/`LPRT` (active) always supported;
   `PASV`/`EPSV` (passive) disabled by default, enable via configuration.
@@ -124,7 +133,11 @@ privileges (to the configured or default target) or exits.
    rest of the system untouched. Fatal on failure when enabled.
 2. Bind the control port (needs root for ports < 1024).
 3. Drop privileges to `user`/`group` (fatal on failure).
-4. Serve read-only, validating every path and rejecting symlink escapes.
+4. Serve read-only, validating every path and rejecting symlink escapes. All file
+   access is performed through an `os.Root` scoped to the served directory (atomic
+   confinement), active-mode data addresses must match the control peer
+   (anti-bounce), passive data connections are only accepted from the control
+   peer, and command lines are length-capped.
 
 **Secure by default (fail-closed):** the server never skips or silently ignores
 a configured security measure. If the namespace/chroot, the read-only re-mount

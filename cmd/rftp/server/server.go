@@ -109,7 +109,9 @@ func (s *Server) Close() {
 	}
 	s.mu.Unlock()
 
-	s.ln.Close()
+	if err := s.ln.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+		logger.Warn("cannot close listener: %v", err)
+	}
 	for _, sess := range sessions {
 		sess.Close()
 	}

@@ -541,6 +541,59 @@ func TestPortSyntaxErrors(t *testing.T) {
 	c.expect(501)
 }
 
+// TestDataAddrBounceRejected verifies the anti-FTP-bounce protection
+// (CWE-441): PORT/EPRT/LPRT with an address that does not match the control
+// connection's peer must be rejected, so the server cannot be abused to open
+// data connections to arbitrary third-party hosts.
+func TestDataAddrBounceRejected(t *testing.T) {
+	_, addr := startTestServer(t, nil)
+	c := dialTestClient(t, addr)
+	c.login()
+
+	// The control connection comes from 127.0.0.1; 127.0.0.2 is a foreign
+	// host and must be refused on all three active-mode commands.
+	c.cmd("PORT 127,0,0,2,195,80")
+	c.expect(501, "must match the control connection")
+	c.cmd("EPRT |1|127.0.0.2|50000|")
+	c.expect(501, "must match the control connection")
+	c.cmd("LPRT 4,4,127,0,0,2,2,195,80")
+	c.expect(501, "must match the control connection")
+
+	// An IPv6 address on an IPv4 control connection is foreign too.
+	c.cmd("EPRT |2|::1|50000|")
+	c.expect(501, "must match the control connection")
+
+	// The session is still usable with a correct PORT afterwards.
+	ln := setupActiveMode(t, c)
+	c.cmd("RETR hello.txt")
+	c.expect(150)
+	if got := readDataConn(t, c, ln); got != "hello world\n" {
+		t.Errorf("RETR data = %q", got)
+	}
+	c.expect(226)
+}
+
+// TestOverlongCommandLine verifies that a command line longer than maxLineLen
+// is rejected with 500 without exhausting memory, and that the session stays
+// usable afterwards (the remainder of the line is drained).
+func TestOverlongCommandLine(t *testing.T) {
+	_, addr := startTestServer(t, nil)
+	c := dialTestClient(t, addr)
+	c.login()
+
+	// A line at the limit (maxLineLen bytes including CRLF) is still read.
+	c.cmd("%s", strings.Repeat("A", maxLineLen-2))
+	c.expect(500, "Command not recognized")
+
+	// A line beyond the limit is rejected as too long.
+	c.cmd("%s", strings.Repeat("B", maxLineLen+100))
+	c.expect(500, "Command line too long")
+
+	// The connection is still in sync and usable.
+	c.cmd("NOOP")
+	c.expect(200, "NOOP ok")
+}
+
 func TestEprtActiveMode(t *testing.T) {
 	_, addr := startTestServer(t, nil)
 	c := dialTestClient(t, addr)

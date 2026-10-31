@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"os"
 	"path/filepath"
@@ -177,12 +178,15 @@ func (s *Session) cmdCwd(arg string) {
 		s.reply(ftp.R550ActionNotTaken, "Access denied")
 		return
 	}
-	real, err := s.realPath(target)
+	// Stat through the os.Root scoped to the served root, so the access
+	// cannot be raced by a symlink swap (no TOCTOU window).
+	root, name, _, err := s.scoped(target)
 	if err != nil {
 		s.replyPathError(err)
 		return
 	}
-	info, err := os.Stat(real)
+	defer root.Close()
+	info, err := root.Stat(name)
 	if err != nil {
 		s.reply(ftp.R550ActionNotTaken, "No such file or directory")
 		return
@@ -279,7 +283,7 @@ func (s *Session) cmdSize(arg string) {
 		s.reply(ftp.R501SyntaxErrorParams, "Filename required")
 		return
 	}
-	_, info, ok := s.resolveFile(arg)
+	info, ok := s.resolveFile(arg)
 	if !ok {
 		return
 	}
@@ -296,7 +300,7 @@ func (s *Session) cmdMdtm(arg string) {
 		s.reply(ftp.R501SyntaxErrorParams, "Filename required")
 		return
 	}
-	_, info, ok := s.resolveFile(arg)
+	info, ok := s.resolveFile(arg)
 	if !ok {
 		return
 	}
@@ -333,12 +337,15 @@ func (s *Session) cmdList(arg string, namesOnly bool) {
 		s.reply(ftp.R550ActionNotTaken, "Access denied")
 		return
 	}
-	real, err := s.realPath(virtual)
+	// Access the directory through the os.Root scoped to the served root, so
+	// a symlink swap between the policy check and the access cannot escape.
+	root, name, _, err := s.scoped(virtual)
 	if err != nil {
 		s.replyPathError(err)
 		return
 	}
-	info, err := os.Stat(real)
+	defer root.Close()
+	info, err := root.Stat(name)
 	if err != nil {
 		s.reply(ftp.R550ActionNotTaken, "No such file or directory")
 		return
@@ -354,7 +361,7 @@ func (s *Session) cmdList(arg string, namesOnly bool) {
 	s.reply(ftp.R150FileActionPending, "Here comes the directory listing")
 
 	if info.IsDir() {
-		entries, err := os.ReadDir(real)
+		entries, err := fs.ReadDir(root.FS(), name)
 		if err != nil {
 			s.reply(ftp.R550ActionNotTaken, "Cannot list directory")
 			return
@@ -393,12 +400,15 @@ func (s *Session) cmdRetr(arg string) {
 		s.reply(ftp.R550ActionNotTaken, "Access denied")
 		return
 	}
-	real, err := s.realPath(virtual)
+	// Stat and open through the os.Root scoped to the served root, so the
+	// access cannot escape even if a symlink is swapped in after the check.
+	root, name, _, err := s.scoped(virtual)
 	if err != nil {
 		s.replyPathError(err)
 		return
 	}
-	info, err := os.Stat(real)
+	defer root.Close()
+	info, err := root.Stat(name)
 	if err != nil {
 		s.reply(ftp.R550ActionNotTaken, "No such file or directory")
 		return
@@ -407,7 +417,7 @@ func (s *Session) cmdRetr(arg string) {
 		s.reply(ftp.R550ActionNotTaken, "Not a regular file")
 		return
 	}
-	f, err := os.Open(real)
+	f, err := root.Open(name)
 	if err != nil {
 		s.reply(ftp.R550ActionNotTaken, "Cannot open file")
 		return
@@ -453,10 +463,14 @@ func (s *Session) cmdPort(arg string) {
 		s.reply(ftp.R501SyntaxErrorParams, "Syntax error in PORT command")
 		return
 	}
-	s.setActive(&net.TCPAddr{
-		IP:   net.IPv4(byte(nums[0]), byte(nums[1]), byte(nums[2]), byte(nums[3])),
-		Port: port,
-	})
+	ip := net.IPv4(byte(nums[0]), byte(nums[1]), byte(nums[2]), byte(nums[3])) // #nosec G115 -- nums[i] range-checked to 0..255 above
+	if !s.checkDataAddr(ip) {
+		// Anti-FTP-bounce: the data address must be the control peer itself.
+		logger.Warn("rejected PORT to foreign host remote=%s addr=%s", s.remoteAddr, ip)
+		s.reply(ftp.R501SyntaxErrorParams, "PORT address must match the control connection")
+		return
+	}
+	s.setActive(&net.TCPAddr{IP: ip, Port: port})
 	s.reply(ftp.R200CommandOK, "PORT command successful")
 }
 
@@ -497,6 +511,12 @@ func (s *Session) cmdEprt(arg string) {
 	port, err := strconv.Atoi(portStr)
 	if err != nil || port < 1 || port > 65535 {
 		s.reply(ftp.R501SyntaxErrorParams, "Syntax error in EPRT command")
+		return
+	}
+	if !s.checkDataAddr(ip) {
+		// Anti-FTP-bounce: the data address must be the control peer itself.
+		logger.Warn("rejected EPRT to foreign host remote=%s addr=%s", s.remoteAddr, ip)
+		s.reply(ftp.R501SyntaxErrorParams, "EPRT address must match the control connection")
 		return
 	}
 	s.setActive(&net.TCPAddr{IP: ip, Port: port})
@@ -553,7 +573,7 @@ func (s *Session) cmdLprt(arg string) {
 			fail()
 			return
 		}
-		addrBytes[i] = byte(n)
+		addrBytes[i] = byte(n) // #nosec G115 -- n range-checked to 0..255 above
 	}
 	var ip net.IP
 	if hal == 4 {
@@ -570,6 +590,12 @@ func (s *Session) cmdLprt(arg string) {
 	port := p1*256 + p2
 	if port == 0 {
 		fail()
+		return
+	}
+	if !s.checkDataAddr(ip) {
+		// Anti-FTP-bounce: the data address must be the control peer itself.
+		logger.Warn("rejected LPRT to foreign host remote=%s addr=%s", s.remoteAddr, ip)
+		s.reply(ftp.R501SyntaxErrorParams, "LPRT address must match the control connection")
 		return
 	}
 	s.setActive(&net.TCPAddr{IP: ip, Port: port})
@@ -628,27 +654,29 @@ func (s *Session) cmdEpsv() {
 
 // --- Helpers -----------------------------------------------------------------
 
-// resolveFile resolves a client path to a real file and stats it, sending
-// the appropriate error reply when it fails. It reports whether the caller
+// resolveFile resolves a client path and stats it through the os.Root scoped
+// to the served root (so the access cannot escape it), sending the
+// appropriate error reply when it fails. It reports whether the caller
 // should continue.
-func (s *Session) resolveFile(arg string) (real string, info os.FileInfo, ok bool) {
+func (s *Session) resolveFile(arg string) (info os.FileInfo, ok bool) {
 	virtual, err := resolvePath(s.cwd, arg)
 	if err != nil {
 		logger.Warn("path traversal blocked remote=%s path=%s", s.remoteAddr, arg)
 		s.reply(ftp.R550ActionNotTaken, "Access denied")
-		return "", nil, false
+		return nil, false
 	}
-	real, err = s.realPath(virtual)
+	root, name, _, err := s.scoped(virtual)
 	if err != nil {
 		s.replyPathError(err)
-		return "", nil, false
+		return nil, false
 	}
-	info, err = os.Stat(real)
+	defer root.Close()
+	info, err = root.Stat(name)
 	if err != nil {
 		s.reply(ftp.R550ActionNotTaken, "No such file or directory")
-		return "", nil, false
+		return nil, false
 	}
-	return real, info, true
+	return info, true
 }
 
 // replyPathError maps a path resolution error to an FTP reply.

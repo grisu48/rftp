@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -30,6 +31,8 @@ var (
 	currentLevel atomic.Int32
 	stdout       io.Writer = os.Stdout
 	stderr       io.Writer = os.Stderr
+	// logMu serializes writes so concurrent sessions cannot interleave lines.
+	logMu sync.Mutex
 )
 
 func init() {
@@ -75,6 +78,8 @@ func logf(l Level, w io.Writer, format string, args ...any) {
 		return
 	}
 	ts := time.Now().UTC().Format("2006-01-02T15:04:05Z")
+	logMu.Lock()
+	defer logMu.Unlock()
 	fmt.Fprintf(w, "%s %s %s\n", ts, l, fmt.Sprintf(format, args...))
 }
 
