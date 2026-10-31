@@ -18,8 +18,9 @@
 ## 3. Security Layer
 - [x] 3.1 Implement chroot functionality (`security/chroot.go`)
 - [x] 3.2 Implement privilege dropping (`security/privileges.go`)
-- [x] 3.3 Implement read-only mount (`security/mount.go`)
-- [x] 3.4 Create security initialization sequence (bind → chroot → mount → drop)
+- [x] 3.3 Implement read-only mount (`security/mount.go`), scoped to a private mount namespace
+- [x] 3.4 Create security initialization sequence (startup re-exec into private mount namespace/chroot → bind → drop)
+- [x] 3.4a Implement startup re-exec applying namespace/chroot/mount process-wide (`security/namespace.go`), with host-namespace isolation tests
 - [x] 3.5 Add tests for privilege dropping (requires root, may need integration test)
 - [x] 3.6 Add tests for chroot behavior
 - [x] 3.7 Enforce secure-by-default (fail-closed): configured security measures must be applied or the program exits (`cmd/rftp/security/harden.go`)

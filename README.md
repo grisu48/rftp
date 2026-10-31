@@ -5,7 +5,8 @@
 A minimal, security-focused, **read-only anonymous FTP server** written in Go.
 It serves a single directory over plain FTP (no TLS) with dual-stack IPv4/IPv6
 support, and hardens itself at startup by chrooting into the served directory,
-re-mounting it read-only, and dropping root privileges.
+re-mounting it read-only in its own private mount namespace (so the rest of the
+system is unaffected), and dropping root privileges.
 
 ## Features
 
@@ -27,9 +28,10 @@ re-mounting it read-only, and dropping root privileges.
   instead of failing. Clients that *only* support passive mode (e.g. GNU
   `inetutils` ftp with `passive` enabled) need `passive_enabled: true` on
   the server, since passive mode is disabled by default.
-- **Security hardening** — when started as root: bind → chroot → read-only
-  re-mount → drop privileges to a non-privileged user. Privilege drop failure
-  is fatal.
+- **Security hardening** — when started as root: startup re-exec into a private
+  mount namespace + chroot + read-only re-mount (scoped to the server process
+  only) → bind → drop privileges to a non-privileged user. Any failure is
+  fatal.
 - **Plain FTP only** — `AUTH TLS`/`PROT` are rejected with `502 TLS not supported`.
 - **Minimal dependencies** — Go standard library plus `gopkg.in/yaml.v3` only.
 
@@ -51,7 +53,7 @@ cmd/rftp/
 ├── config/            # YAML config parsing and validation
 ├── ftp/               # FTP protocol constants, command parser, types
 ├── logger/            # Leveled logging (info/debug→stdout, warn/error→stderr)
-├── security/          # Privilege drop, chroot, read-only mount (Linux)
+├── security/          # Privilege drop, chroot, read-only mount in a private mount namespace (Linux)
 └── server/            # Listener, server lifecycle, sessions, commands, passive ports
 ```
 
@@ -74,7 +76,9 @@ privilege dropping. The server is **secure by default (fail-closed)**: every
 configured security measure must be applied or the program exits with a
 non-zero status. In particular, when started as a non-root user with `chroot`
 or `read_only_mount` enabled (the defaults), it refuses to start — set them to
-`false` explicitly to run without root.
+`false` explicitly to run without root. The read-only re-mount is performed in
+a private mount namespace owned by the server, so other processes on the system
+keep their normal (writable) view of the served directory.
 
 ### Configuration
 
@@ -111,20 +115,25 @@ privileges (to the configured or default target) or exits.
 
 ## Security model
 
-1. Bind the control port (needs root for ports < 1024).
-2. `chroot` into `serve_dir` (fatal on failure when enabled).
-3. Re-mount `serve_dir` read-only (fatal on failure when enabled).
-4. Drop privileges to `user`/`group` (fatal on failure).
-5. Serve read-only, validating every path and rejecting symlink escapes.
+1. Startup re-exec (when root, with `chroot` or `read_only_mount` enabled): the
+   process re-executes itself (same PID) after applying, on a single locked
+   thread, the `chroot` into `serve_dir` and/or the read-only re-mount inside a
+   private mount namespace (`unshare(CLONE_NEWNS)` + private propagation). This
+   makes the measures apply to the whole process — `unshare(2)`/`chroot(2)` are
+   per-thread — and keeps the read-only view private to the server, leaving the
+   rest of the system untouched. Fatal on failure when enabled.
+2. Bind the control port (needs root for ports < 1024).
+3. Drop privileges to `user`/`group` (fatal on failure).
+4. Serve read-only, validating every path and rejecting symlink escapes.
 
 **Secure by default (fail-closed):** the server never skips or silently ignores
-a configured security measure. If chroot, the read-only re-mount or the
-privilege drop fails, the program logs an error and exits with a non-zero
-status. The server **never serves as root**: when started as root it always
-drops privileges before serving; when started unprivileged with `chroot` or
-`read_only_mount` enabled it refuses to start (set them to `false` explicitly
-to run without root — the process is then already unprivileged, so there are
-no root privileges to drop).
+a configured security measure. If the namespace/chroot, the read-only re-mount
+or the privilege drop fails, the program logs an error and exits with a
+non-zero status. The server **never serves as root**: when started as root it
+always drops privileges before serving; when started unprivileged with
+`chroot` or `read_only_mount` enabled it refuses to start (set them to `false`
+explicitly to run without root — the process is then already unprivileged, so
+there are no root privileges to drop).
 
 Regardless of privileges, the server refuses all write commands and blocks
 path traversal, so the served directory is never modified.
@@ -139,7 +148,7 @@ After=network.target
 [Service]
 ExecStart=/usr/local/bin/rftp -config /etc/rftp/config.yaml
 User=root
-AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_SYS_CHROOT
+AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_SYS_CHROOT CAP_SYS_ADMIN
 NoNewPrivileges=true
 ProtectSystem=strict
 ReadOnlyPaths=/srv/ftp

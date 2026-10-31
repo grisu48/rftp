@@ -55,7 +55,7 @@ serve_dir: /srv/ftp         # Directory to serve (will be chrooted)
 user: nobody                # Optional: user to drop privileges to (default: nobody)
 group: nogroup              # Optional: group to drop privileges to (default: nogroup)
 chroot: true                # Chroot into serve_dir (requires root)
-read_only_mount: true       # Re-mount serve_dir as read-only
+read_only_mount: true       # Re-mount serve_dir read-only in a private mount namespace (requires root)
 
 # Logging
 log_level: info             # debug, info, warn, error
@@ -68,17 +68,21 @@ runs as root.
 
 ### Decision: Privilege dropping and chroot sequence
 **What**: When running as root, perform security hardening in this order:
-1. Bind to port (requires root for ports < 1024)
-2. Chroot into the served directory (if enabled)
-3. Re-mount the directory as read-only (if enabled)
-4. Drop privileges to configured user/group
-5. Continue serving
+1. Startup re-exec into an isolated context (if `chroot` or `read_only_mount` is enabled): the process re-executes itself (same PID) after applying, on a single locked thread:
+   - `unshare(CLONE_NEWNS)` + make the mount tree private (`MS_REC|MS_PRIVATE`) and re-mount the serve directory read-only (if `read_only_mount` enabled) — all inside the new private mount namespace, so the rest of the system is not affected
+   - `chroot` into the served directory (if `chroot` enabled)
+2. Bind to port (requires root for ports < 1024)
+3. Drop privileges to configured user/group
+4. Continue serving
 
 The sequence is **fail-closed**: every step that is enabled in configuration
 must succeed. If any step fails, the server exits with a non-zero status — it
 never continues serving in a degraded security posture (see *Secure by default*).
 
 **Why**:
+- `unshare(2)` and `chroot(2)` only affect the calling thread; applying them before the re-exec (while the thread is locked and the image is replaced via `execveat`) makes them apply to the whole process — every thread the Go runtime creates afterwards inherits the namespace and root. Applying them later in a multi-threaded process would leave the accept loop and handler threads in the host namespace/root
+- The read-only re-mount is done inside a private mount namespace (`MS_REC|MS_PRIVATE` on `/` right after `unshare`) so it is visible only to the server process; without this, the re-mount would affect the whole system (and on hosts with shared mounts it would propagate back even from a new namespace)
+- The configuration is passed to the re-executed image via the environment (`RFTP_CONFIG`), because the config file path may be outside the chroot; the executable is re-executed through an already-open fd (`execveat`) for the same reason
 - Binding must happen before dropping privileges
 - Chroot before dropping privileges ensures we're in the right context
 - Read-only mount prevents any accidental writes
@@ -87,12 +91,14 @@ never continues serving in a degraded security posture (see *Secure by default*)
 
 **Alternatives considered**:
 - Dropping privileges before chroot — rejected, as chroot typically requires root
+- Applying unshare/chroot inside the hardening step of the already-running multi-threaded process — rejected: per-thread semantics would leave most threads un-isolated
+- `pivot_root` instead of chroot — rejected: changes chroot semantics; pre-exec chroot keeps `chroot(2)`
 - Warn-and-continue when a hardening step fails — rejected, see *Secure by default*
 
 ### Decision: Secure by default (fail-closed security hardening)
 **What**: The server MUST apply every configured security measure or fail:
-- `chroot: true` (default): chroot into `serve_dir`; if chroot fails, **exit with non-zero status**
-- `read_only_mount: true` (default): re-mount `serve_dir` read-only; if the re-mount fails, **exit with non-zero status**
+- `chroot: true` (default): chroot into `serve_dir` (applied process-wide via the startup re-exec); if chroot fails, **exit with non-zero status**
+- `read_only_mount: true` (default): re-mount `serve_dir` read-only inside a private mount namespace (applied via the startup re-exec, so the host is unaffected); if entering the namespace or the re-mount fails, **exit with non-zero status**
 - Privilege dropping: when the server starts as root it MUST drop privileges before serving — to the configured `user`/`group`, or to the default `nobody`/`nogroup` when they are not configured (`user` and `group` are both optional); if the drop fails, **exit with non-zero status**
 - Starting as non-root while `chroot: true` or `read_only_mount: true` is configured: the measure cannot be applied, so the server **refuses to start** (exit non-zero). The operator must either start as root or explicitly set the measure to `false`.
 - Starting as non-root with `chroot: false` and `read_only_mount: false`: the process is already unprivileged, so there are no root privileges to drop — the privilege-drop goal is satisfied. The server logs this explicitly (it is not a silent skip) and continues.
@@ -181,7 +187,8 @@ unavailable (e.g. the classic `ftp` client over IPv6 skips `EPRT` after
     ├── security/
     │   ├── privileges.go   # Privilege dropping
     │   ├── chroot.go       # Chroot handling
-    │   └── mount.go        # Read-only mount
+    │   ├── mount.go        # Read-only mount + private mount namespace
+    │   └── namespace.go    # Startup re-exec applying namespace/chroot/mount process-wide
     └── ftp/
         ├── protocol.go     # FTP protocol constants and helpers
         └── types.go        # Data structures
@@ -193,7 +200,10 @@ unavailable (e.g. the classic `ftp` client over IPv6 skips `EPRT` after
 **Mitigation**: If `chroot` is enabled and the server is not running as root, it refuses to start with a clear error (secure by default). When running as root, a chroot failure is fatal.
 
 ### Risk: Read-only mount may not be possible in all environments
-**Mitigation**: Fail closed — if `read_only_mount` is enabled and the re-mount fails, the server exits with a non-zero status. Operators in restricted environments must explicitly set `read_only_mount: false`, which is a visible, auditable configuration choice rather than a silent skip.
+**Mitigation**: Fail closed — if `read_only_mount` is enabled and entering the private mount namespace or the re-mount fails, the server exits with a non-zero status. Operators in restricted environments (e.g. unprivileged containers without `CAP_SYS_ADMIN`) must explicitly set `read_only_mount: false`, which is a visible, auditable configuration choice rather than a silent skip.
+
+### Risk: Read-only re-mount could leak to the whole system
+**Mitigation**: The re-mount is performed only inside a private mount namespace entered via `unshare(CLONE_NEWNS)` followed by `MS_REC|MS_PRIVATE` on `/` (detaching propagation), applied process-wide via the startup re-exec. Other processes keep a writable view of the served directory; tests assert that the host namespace remains writable.
 
 ### Risk: Passive mode port range exhaustion
 **Mitigation**: Implement port range rotation; close idle passive connections

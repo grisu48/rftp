@@ -4,6 +4,7 @@
 package security
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -66,6 +67,10 @@ func TestHelperProcess(t *testing.T) {
 		helperPrivDrop(t)
 	case "mount":
 		helperMount(t)
+	case "reexec":
+		helperReexec(t)
+	case "reexec-plain":
+		helperReexecPlain(t)
 	case "harden-ok":
 		helperHardenOK(t)
 	case "harden-defaults":
@@ -176,12 +181,16 @@ func TestDropPrivilegesAsRoot(t *testing.T) {
 	}
 }
 
-// helperMount re-mounts GO_RFTP_DIR read-only and verifies that writes
-// to it fail. If the environment forbids mounting (e.g. unprivileged
-// container without CAP_SYS_ADMIN), it exits with code 42 so the parent
-// can skip.
+// helperMount enters a private mount namespace, re-mounts GO_RFTP_DIR
+// read-only inside it and verifies that writes to it fail. If the
+// environment forbids unsharing/mounting (e.g. unprivileged container
+// without CAP_SYS_ADMIN), it exits with code 42 so the parent can skip.
 func helperMount(t *testing.T) {
 	dir := os.Getenv("GO_RFTP_DIR")
+	if err := EnterPrivateMountNamespace(); err != nil {
+		fmt.Fprintf(os.Stderr, "EnterPrivateMountNamespace: %v\n", err)
+		os.Exit(42) // environment does not allow namespaces
+	}
 	if err := RemountReadOnly(dir); err != nil {
 		fmt.Fprintf(os.Stderr, "RemountReadOnly: %v\n", err)
 		os.Exit(42) // environment does not allow mounting
@@ -198,13 +207,114 @@ func TestRemountReadOnlyAsRoot(t *testing.T) {
 	if !IsRoot() {
 		t.Skip("read-only mount test requires root")
 	}
+	dir := t.TempDir()
 	cmd := exec.Command(os.Args[0], "-test.run=TestHelperProcess")
-	cmd.Env = append(os.Environ(), "GO_RFTP_HELPER=mount", "GO_RFTP_DIR="+t.TempDir())
+	cmd.Env = append(os.Environ(), "GO_RFTP_HELPER=mount", "GO_RFTP_DIR="+dir)
 	out, err := cmd.CombinedOutput()
 	if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 42 {
 		t.Skipf("mounting not permitted in this environment: %s", out)
 	}
 	if err != nil {
 		t.Fatalf("mount helper failed: %v\n%s", err, out)
+	}
+	// The re-mount must be scoped to the child's private mount namespace:
+	// the parent (host namespace) can still write to the directory.
+	if err := os.WriteFile(filepath.Join(dir, "from-host.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("write in host namespace failed — re-mount leaked out of the private namespace: %v", err)
+	}
+}
+
+// helperReexec exercises the startup re-exec (Reexec): the first image calls
+// Reexec, which replaces the process image; the re-executed image then
+// verifies that the chroot and the read-only mount were applied to the whole
+// process. Exits 42 when the environment forbids namespaces/mounts.
+func helperReexec(t *testing.T) {
+	if !Reexeced() {
+		dir := os.Getenv("GO_RFTP_DIR")
+		err := Reexec(Hardening{ServeDir: dir, Chroot: true, ReadOnlyMount: true})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Reexec: %v\n", err)
+			if errors.Is(err, syscall.EPERM) {
+				os.Exit(42) // environment does not allow namespaces/mounts
+			}
+			os.Exit(1)
+		}
+		os.Exit(1) // unreachable: Reexec replaces the image on success
+	}
+	// Re-executed image: chroot + private mount namespace + read-only mount
+	// must have been applied process-wide.
+	if wd, err := os.Getwd(); err != nil || wd != "/" {
+		fmt.Fprintf(os.Stderr, "getwd = %q, %v; want / (chroot not applied)\n", wd, err)
+		os.Exit(2)
+	}
+	if _, err := os.Stat("/inside.txt"); err != nil {
+		fmt.Fprintf(os.Stderr, "/inside.txt not visible after chroot: %v\n", err)
+		os.Exit(3)
+	}
+	if err := os.WriteFile("/should-fail.txt", []byte("x"), 0o644); err == nil {
+		fmt.Fprintf(os.Stderr, "write succeeded: read-only mount not applied\n")
+		os.Exit(4)
+	}
+	os.Exit(0)
+}
+
+// helperReexecPlain verifies the re-exec machinery itself — execveat of the
+// executable through an already-open fd, guard env, argv/env preservation —
+// without requiring any privileges: with all measures disabled, Reexec only
+// replaces the process image.
+func helperReexecPlain(t *testing.T) {
+	if !Reexeced() {
+		if err := Reexec(Hardening{ServeDir: os.Getenv("GO_RFTP_DIR")}); err != nil {
+			fmt.Fprintf(os.Stderr, "Reexec: %v\n", err)
+			os.Exit(1)
+		}
+		os.Exit(1) // unreachable: Reexec replaces the image on success
+	}
+	// Re-executed image: same test binary re-ran TestHelperProcess with the
+	// original args, and the guard env is set.
+	if os.Getenv("GO_RFTP_HELPER") != "reexec-plain" {
+		fmt.Fprintf(os.Stderr, "helper env lost across re-exec\n")
+		os.Exit(2)
+	}
+	os.Exit(0)
+}
+
+func TestReexecReplacesImageWithoutPrivileges(t *testing.T) {
+	// No root required: with chroot/read_only_mount disabled, Reexec only
+	// replaces the process image (execveat) and sets the guard env.
+	cmd := exec.Command(os.Args[0], "-test.run=TestHelperProcess")
+	cmd.Env = append(os.Environ(), "GO_RFTP_HELPER=reexec-plain", "GO_RFTP_DIR="+t.TempDir())
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("reexec-plain helper failed: %v\n%s", err, out)
+	}
+}
+
+func TestReexecAppliesIsolationProcessWideAsRoot(t *testing.T) {
+	if !IsRoot() {
+		t.Skip("re-exec isolation test requires root")
+	}
+	base := t.TempDir()
+	jail := filepath.Join(base, "jail")
+	if err := os.Mkdir(jail, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(jail, "inside.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command(os.Args[0], "-test.run=TestHelperProcess")
+	cmd.Env = append(os.Environ(), "GO_RFTP_HELPER=reexec", "GO_RFTP_DIR="+jail)
+	out, err := cmd.CombinedOutput()
+	if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 42 {
+		t.Skipf("namespaces/mounts not permitted in this environment: %s", out)
+	}
+	if err != nil {
+		t.Fatalf("reexec helper failed: %v\n%s", err, out)
+	}
+	// The host mount namespace must be unaffected: the parent can still
+	// write to the served directory.
+	if err := os.WriteFile(filepath.Join(jail, "from-host.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("write in host namespace failed — re-mount leaked out of the private namespace: %v", err)
 	}
 }

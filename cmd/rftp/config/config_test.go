@@ -253,6 +253,35 @@ func TestServeDirMadeAbsolute(t *testing.T) {
 	}
 }
 
+func TestEncodeParseRoundTrip(t *testing.T) {
+	// The startup re-exec passes the configuration to the new image via the
+	// environment (InlineEnv); Encode/Parse must round-trip losslessly.
+	dir := t.TempDir()
+	cfg := Default()
+	cfg.ListenAddr = "127.0.0.1:2121"
+	cfg.PassiveEnabled = true
+	cfg.PassivePortMin = 41000
+	cfg.PassivePortMax = 41050
+	cfg.ServeDir = dir
+	cfg.User = "ftpd"
+	cfg.Group = "ftp"
+	cfg.Chroot = true
+	cfg.ReadOnlyMount = true
+	cfg.LogLevel = "debug"
+
+	data, err := Encode(cfg)
+	if err != nil {
+		t.Fatalf("Encode: %v", err)
+	}
+	back, err := Parse(data)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if *back != *cfg {
+		t.Errorf("round trip mismatch:\n got %+v\nwant %+v", back, cfg)
+	}
+}
+
 func mustGetwd(t *testing.T) string {
 	t.Helper()
 	wd, err := os.Getwd()

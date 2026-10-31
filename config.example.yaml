@@ -12,7 +12,7 @@ serve_dir: /srv/ftp         # The single directory to serve (chrooted into when 
 user: nobody                # Optional: user to drop privileges to (default: nobody)
 group: nogroup              # Optional: group to drop privileges to (default: nogroup)
 chroot: true                # Chroot into serve_dir (requires root; startup fails if it cannot be applied)
-read_only_mount: true       # Re-mount serve_dir read-only (requires root; startup fails if it cannot be applied)
+read_only_mount: true       # Re-mount serve_dir read-only in a private mount namespace (requires root + CAP_SYS_ADMIN; startup fails if it cannot be applied; the rest of the system is unaffected)
 
 # Logging (info/debug go to stdout, warn/error go to stderr)
 log_level: info             # One of: debug, info, warn, error

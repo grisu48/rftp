@@ -41,11 +41,11 @@ The server SHALL only support read operations. The server MUST NOT support any c
 ---
 
 ### Requirement: Single directory serving with chroot
-The server SHALL serve files from a single configured directory. When running as root, the server MUST chroot into this directory before serving.
+The server SHALL serve files from a single configured directory. When running as root, the server MUST chroot into this directory before serving. Because `chroot(2)` is per-thread, the chroot MUST be applied before a startup re-exec of the process image, so that the whole process (all threads) is chrooted.
 
 #### Scenario: Chroot on startup (when root)
 - **WHEN** the server starts as root and `chroot: true` in config
-- **THEN** the server chroots into the configured `serve_dir` before accepting connections
+- **THEN** the server chroots into the configured `serve_dir` before accepting connections, and every thread of the process sees the chrooted root
 
 #### Scenario: Chroot failure is fatal
 - **WHEN** chroot fails (e.g., directory doesn't exist, permission denied)
@@ -82,16 +82,20 @@ The server MUST drop root privileges after binding to the port and performing ch
 
 ---
 
-### Requirement: Read-only filesystem mount
-When `read_only_mount: true` is configured, the server SHALL re-mount the served directory as read-only before dropping privileges. If the re-mount fails, the server MUST exit with non-zero status (secure by default).
+### Requirement: Read-only filesystem mount in a private mount namespace
+When `read_only_mount: true` is configured, the server SHALL re-mount the served directory as read-only inside its own private mount namespace (`unshare(CLONE_NEWNS)` + making the mount tree private), so that the rest of the system is not affected. The namespace is entered before a startup re-exec of the process image (because `unshare(2)` is per-thread), so the read-only view applies to the whole server process. If the namespace cannot be entered or the re-mount fails, the server MUST exit with non-zero status (secure by default).
 
-#### Scenario: Read-only mount attempted
+#### Scenario: Read-only mount attempted in a private namespace
 - **WHEN** the server starts as root and `read_only_mount: true` in config
-- **THEN** the server attempts to re-mount the served directory with read-only flag
+- **THEN** the server enters a private mount namespace and re-mounts the served directory with the read-only flag inside it
 
 #### Scenario: Read-only mount failure is fatal
-- **WHEN** the server starts as root, `read_only_mount: true` is configured, and the read-only re-mount fails
+- **WHEN** the server starts as root, `read_only_mount: true` is configured, and entering the private mount namespace or the read-only re-mount fails
 - **THEN** the server logs an error and exits with non-zero status
+
+#### Scenario: Host mount namespace unaffected
+- **WHEN** the server starts as root with `read_only_mount: true` and has re-mounted the served directory read-only in its private mount namespace
+- **THEN** other processes on the system can still write to the served directory (the read-only re-mount is visible only inside the server's mount namespace)
 
 ---
 

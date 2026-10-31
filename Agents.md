@@ -6,7 +6,8 @@ security-focused, **read-only anonymous FTP server** written in Go.
 - **Module / repository**: `github.com/grisu48/rftp`
 - **License**: MIT (see `LICENSE`)
 - **Primary platform**: Linux — chroot, privilege dropping and the read-only
-  re-mount are Linux-only (`security/` has `//go:build linux` files)
+  re-mount in a private mount namespace are Linux-only (`security/` has
+  `//go:build linux` files)
 
 ## Project layout
 
@@ -16,7 +17,7 @@ cmd/rftp/
 ├── config/        # YAML config loading, defaults, validation
 ├── ftp/           # FTP protocol constants, command parser, types
 ├── logger/        # leveled logging (info/debug -> stdout, warn/error -> stderr)
-├── security/      # Linux hardening: chroot, read-only mount, privilege drop, fail-closed Apply
+├── security/      # Linux hardening: chroot, read-only mount in a private mount namespace, startup re-exec, privilege drop, fail-closed Apply
 └── server/        # dual-stack listener, server lifecycle, sessions, command handlers, passive ports
 container/
 └── rftp.yaml      # minimal default configuration shipped in the container image
@@ -35,8 +36,11 @@ go test ./...
 
 The suite contains unit tests, in-process FTP integration tests (real TCP
 sessions), and security tests. Root-only tests (chroot, privilege drop,
-read-only mount, fail-closed hardening) **skip automatically** when not run as
-root — run `sudo go test ./...` to exercise them.
+read-only mount in a private mount namespace, startup re-exec, fail-closed
+hardening) **skip automatically** when not run as root — run
+`sudo go test ./...` to exercise them. The namespace tests assert that the
+host mount namespace stays writable while the server sees the directory
+read-only.
 
 ## Configuration
 
@@ -56,6 +60,13 @@ disabled by default (`passive_enabled: false`).
   exits with a non-zero status. The server MUST NOT serve as root: a root start
   always drops privileges (configured or default `nobody`/`nogroup` target);
   an unprivileged start with `chroot`/`read_only_mount` enabled refuses to start.
+- **Namespace-scoped isolation**: as root with `chroot`/`read_only_mount`
+  enabled, the process re-execs itself at startup (same PID) after applying
+  `unshare(CLONE_NEWNS)` + private propagation + chroot + read-only re-mount on
+  a locked thread (`security/namespace.go`), because `unshare(2)`/`chroot(2)`
+  are per-thread. The read-only re-mount therefore never affects the rest of
+  the system; the config is passed to the re-executed image via the
+  `RFTP_CONFIG` env var (`config.InlineEnv`).
 - **Path safety**: traversal above the served root (`CWD ../../etc`) and
   symlinks escaping it are rejected with `550 Access denied`.
 - **Plain FTP only**: `AUTH TLS`/`PROT`/`PBSZ` are rejected with

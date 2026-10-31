@@ -9,7 +9,7 @@
 listen_addr: ":2121"        # FTP control port inside the container (unprivileged port)
 serve_dir: /ftp             # served directory (mount your data here)
 chroot: false               # requires root; the container runs unprivileged
-read_only_mount: false      # requires root; the container runs unprivileged
+read_only_mount: false      # requires root + CAP_SYS_ADMIN (private mount namespace); the container runs unprivileged
 passive_enabled: false      # passive mode (PASV/EPSV) disabled by default
 log_level: info             # debug, info, warn, error
 # user/group are optional (default: nobody/nogroup); unused when unprivileged

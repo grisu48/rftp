@@ -41,6 +41,13 @@ type Hardening struct {
 // configuration, otherwise Apply returns an error; in that case there are no
 // root privileges to drop, so the privilege-drop goal is already satisfied
 // and this is logged explicitly rather than silently skipped.
+//
+// When the process was re-executed at startup (Reexec, see NeedsReexec), the
+// chroot and the read-only re-mount have already been applied process-wide
+// before the exec — in a private mount namespace, so the rest of the system
+// is not affected — and Apply only drops privileges. unshare(2) and
+// chroot(2) are per-thread, which is why they cannot be applied here in a
+// multi-threaded process.
 func Apply(h Hardening) (string, error) {
 	serveDir := h.ServeDir
 
@@ -55,19 +62,40 @@ func Apply(h Hardening) (string, error) {
 		return serveDir, nil
 	}
 
-	if h.Chroot {
-		if err := Chroot(serveDir); err != nil {
-			return "", fmt.Errorf("secure by default: chroot failed (fatal): %w", err)
+	if Reexeced() {
+		// The startup re-exec already applied the chroot and the read-only
+		// re-mount (in a private mount namespace) to the whole process; any
+		// failure there was fatal before the exec.
+		if h.Chroot {
+			serveDir = "/"
+			logger.Info("chrooted into served directory dir=/ (applied at startup re-exec)")
 		}
-		// After chroot the served directory is the process root.
-		serveDir = "/"
-		logger.Info("chrooted into served directory dir=/")
-	}
-	if h.ReadOnlyMount {
-		if err := RemountReadOnly(serveDir); err != nil {
-			return "", fmt.Errorf("secure by default: read-only mount failed (fatal): %w", err)
+		if h.ReadOnlyMount {
+			logger.Info("served directory re-mounted read-only in private mount namespace dir=%s (applied at startup re-exec)", serveDir)
 		}
-		logger.Info("served directory re-mounted read-only dir=%s", serveDir)
+	} else {
+		// Direct call (tests, or a caller that did not re-exec): apply the
+		// measures on the current thread. The read-only re-mount is scoped
+		// to a private mount namespace so it does not leak to the host.
+		if h.ReadOnlyMount {
+			if err := EnterPrivateMountNamespace(); err != nil {
+				return "", fmt.Errorf("secure by default: cannot enter private mount namespace (fatal): %w", err)
+			}
+		}
+		if h.Chroot {
+			if err := Chroot(serveDir); err != nil {
+				return "", fmt.Errorf("secure by default: chroot failed (fatal): %w", err)
+			}
+			// After chroot the served directory is the process root.
+			serveDir = "/"
+			logger.Info("chrooted into served directory dir=/")
+		}
+		if h.ReadOnlyMount {
+			if err := RemountReadOnly(serveDir); err != nil {
+				return "", fmt.Errorf("secure by default: read-only mount failed (fatal): %w", err)
+			}
+			logger.Info("served directory re-mounted read-only in private mount namespace dir=%s", serveDir)
+		}
 	}
 	// Privilege dropping is never skipped when running as root: if it fails,
 	// the program must exit rather than serve as root. The drop target is the

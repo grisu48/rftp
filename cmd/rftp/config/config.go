@@ -55,6 +55,12 @@ func Default() *Config {
 	}
 }
 
+// InlineEnv is the environment variable used to pass the serialized
+// configuration to the re-executed process image (see security.Reexec): after
+// chroot the config file path may be unreachable, so the new image reads the
+// configuration from this variable instead of from a file.
+const InlineEnv = "RFTP_CONFIG"
+
 // Load reads, parses and validates the configuration file at path.
 // Missing files, invalid YAML and invalid values are reported as errors.
 func Load(path string) (*Config, error) {
@@ -70,6 +76,26 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("invalid config file %s: %w", path, err)
 	}
 	return cfg, nil
+}
+
+// Parse unmarshals and validates configuration from YAML data. It is used for
+// the configuration passed to the re-executed process image via InlineEnv,
+// where no file is involved.
+func Parse(data []byte) (*Config, error) {
+	cfg := Default()
+	if err := yaml.Unmarshal(data, cfg); err != nil {
+		return nil, fmt.Errorf("cannot parse config: %w", err)
+	}
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
+	}
+	return cfg, nil
+}
+
+// Encode serializes c to YAML; the result can be passed to the re-executed
+// process image via InlineEnv and parsed back with Parse.
+func Encode(c *Config) ([]byte, error) {
+	return yaml.Marshal(c)
 }
 
 // Validate checks the configuration for missing or invalid fields.
