@@ -29,8 +29,114 @@ var preLoginCommands = map[string]bool{
 	ftp.CmdOPTS: true,
 }
 
+// allowedCommands is the complete allowlist of commands this server ever
+// processes. It contains only read-only and session-management commands —
+// no command that modifies the filesystem. handleCommand rejects every
+// command NOT in this set in a guard clause at the very top, before the
+// login check and before the dispatch switch, so there is no code path —
+// present or future — on which an unlisted command (in particular any write
+// command) could reach a handler and be executed.
+var allowedCommands = map[string]bool{
+	// Connection & authentication.
+	ftp.CmdUSER: true,
+	ftp.CmdPASS: true,
+	ftp.CmdQUIT: true,
+	ftp.CmdNOOP: true,
+	// Navigation & transfer parameters.
+	ftp.CmdPWD:  true,
+	ftp.CmdXPWD: true,
+	ftp.CmdCWD:  true,
+	ftp.CmdXCWD: true,
+	ftp.CmdCDUP: true,
+	ftp.CmdTYPE: true,
+	ftp.CmdMODE: true,
+	ftp.CmdSTRU: true,
+	// Information.
+	ftp.CmdSYST: true,
+	ftp.CmdFEAT: true,
+	ftp.CmdHELP: true,
+	ftp.CmdOPTS: true,
+	ftp.CmdSIZE: true,
+	ftp.CmdMDTM: true,
+	// Listing & retrieval.
+	ftp.CmdLIST: true,
+	ftp.CmdNLST: true,
+	ftp.CmdRETR: true,
+	// Data connection setup.
+	ftp.CmdPORT: true,
+	ftp.CmdEPRT: true,
+	ftp.CmdLPRT: true,
+	ftp.CmdPASV: true,
+	ftp.CmdEPSV: true,
+}
+
+// The sets below classify the commands that are NOT allowed. They exist only
+// to pick the RFC-appropriate reply code in the guard clause of
+// handleCommand; the guard itself rejects everything outside allowedCommands.
+var (
+	// writeCommands modify the filesystem (upload, delete, rename,
+	// mkdir/rmdir) or could be abused to do so (SITE, e.g. "SITE CHMOD").
+	// Rejected with 550 "Read-only file system".
+	writeCommands = map[string]bool{
+		ftp.CmdSTOR: true,
+		ftp.CmdAPPE: true,
+		ftp.CmdSTOU: true,
+		ftp.CmdDELE: true,
+		ftp.CmdRNFR: true,
+		ftp.CmdRNTO: true,
+		ftp.CmdMKD:  true,
+		ftp.CmdXMKD: true,
+		ftp.CmdRMD:  true,
+		ftp.CmdXRMD: true,
+		ftp.CmdSITE: true,
+	}
+	// tlsCommands are rejected with 502 "TLS not supported" (plain FTP only).
+	tlsCommands = map[string]bool{
+		ftp.CmdAUTH: true,
+		ftp.CmdPROT: true,
+		ftp.CmdPBSZ: true,
+	}
+	// notImplementedCommands are recognized but not implemented. 502 (not
+	// 500) is essential here: 500 means "command unrecognized" and breaks
+	// the fallback chains of standard clients (e.g. the classic ftp client
+	// tries EPSV -> PASV -> LPSV and EPRT -> PORT -> LPRT), while 502 tells
+	// them to fall back to a supported command.
+	notImplementedCommands = map[string]bool{
+		ftp.CmdMLSD: true,
+		ftp.CmdMLST: true,
+		ftp.CmdREST: true,
+		ftp.CmdLPSV: true,
+		ftp.CmdSTAT: true,
+		ftp.CmdABOR: true,
+		ftp.CmdALLO: true,
+		ftp.CmdACCT: true,
+		ftp.CmdSMNT: true,
+		ftp.CmdREIN: true,
+	}
+)
+
 // handleCommand dispatches one parsed command to its handler.
 func (s *Session) handleCommand(cmd ftp.Command) {
+	// Allowlist guard: only commands in allowedCommands are ever
+	// dispatched. Every other command is rejected here, first of all,
+	// regardless of login state — before any other processing. This is the
+	// single choke point through which every command passes; the switch
+	// below contains a case only for allowed commands.
+	if !allowedCommands[cmd.Name] {
+		switch {
+		case writeCommands[cmd.Name]:
+			logger.Warn("rejected write command remote=%s cmd=%s", s.remoteAddr, cmd.Name)
+			s.reply(ftp.R550ActionNotTaken, "Read-only file system")
+		case tlsCommands[cmd.Name]:
+			s.reply(ftp.R502NotImplemented, "TLS not supported")
+		case notImplementedCommands[cmd.Name]:
+			s.reply(ftp.R502NotImplemented, "Command not implemented")
+		default:
+			s.reply(ftp.R500SyntaxError, "Command not recognized")
+		}
+		return
+	}
+
 	if !preLoginCommands[cmd.Name] && !s.loggedIn {
 		s.reply(ftp.R530NotLoggedIn, "Please login with USER and PASS")
 		return
@@ -95,28 +201,10 @@ func (s *Session) handleCommand(cmd ftp.Command) {
 	case ftp.CmdEPSV:
 		s.cmdEpsv()
 
-	// TLS is not supported (plain FTP only).
-	case ftp.CmdAUTH, ftp.CmdPROT, ftp.CmdPBSZ:
-		s.reply(ftp.R502NotImplemented, "TLS not supported")
-
-	// Write operations are not supported (read-only file system).
-	case ftp.CmdSTOR, ftp.CmdAPPE, ftp.CmdSTOU, ftp.CmdDELE,
-		ftp.CmdRNFR, ftp.CmdRNTO, ftp.CmdMKD, ftp.CmdXMKD,
-		ftp.CmdRMD, ftp.CmdXRMD, ftp.CmdSITE:
-		logger.Warn("rejected write command remote=%s cmd=%s", s.remoteAddr, cmd.Name)
-		s.reply(ftp.R550ActionNotTaken, "Read-only file system")
-
-	// Recognized but not implemented. 502 (not 500) is essential here:
-	// 500 means "command unrecognized" and breaks the fallback chains of
-	// standard clients (e.g. the classic ftp client tries EPSV -> PASV ->
-	// LPSV and EPRT -> PORT -> LPRT), while 502 tells them to fall back to
-	// a supported command.
-	case ftp.CmdMLSD, ftp.CmdMLST, ftp.CmdREST,
-		ftp.CmdLPSV, ftp.CmdSTAT, ftp.CmdABOR, ftp.CmdALLO,
-		ftp.CmdACCT, ftp.CmdSMNT, ftp.CmdREIN:
-		s.reply(ftp.R502NotImplemented, "Command not implemented")
-
 	default:
+		// Unreachable: the allowlist guard at the top of handleCommand
+		// rejects every command without a case here. Kept as a fail-closed
+		// safety net.
 		s.reply(ftp.R500SyntaxError, "Command not recognized")
 	}
 }

@@ -51,8 +51,13 @@ disabled by default (`passive_enabled: false`).
 
 ## Security model — non-negotiable
 
-- **Read-only**: write commands (`STOR`, `APPE`, `STOU`, `DELE`, `RNFR`,
-  `RNTO`, `MKD`, `RMD`, `SITE`) are rejected with `550 Read-only file system`.
+- **Read-only, allowlist by design**: `handleCommand` dispatches only commands
+  in the `allowedCommands` set (read-only + session management); a guard
+  clause at the very top rejects every other command before the login check
+  and before the switch — write commands (`STOR`, `APPE`, `STOU`, `DELE`,
+  `RNFR`, `RNTO`, `MKD`, `RMD`, `SITE`) with `550 Read-only file system`,
+  TLS commands with `502 TLS not supported`, recognized-but-unimplemented
+  commands with `502 Command not implemented`, unknown commands with `500`.
 - **Anonymous only**: only `anonymous`/`ftp` are accepted; any other user gets
   `530 Anonymous access only` and the connection is closed.
 - **Secure by default (fail-closed)**: every configured security measure
