@@ -526,6 +526,41 @@ func TestRetrWithoutDataConnection(t *testing.T) {
 	c.expect(425, "Use PORT or PASV first")
 }
 
+// --- Bandwidth limit (spec: per-connection bandwidth limit) --------------------
+
+// TestRetrBandwidthLimited verifies that a RETR over the data connection is
+// throttled to the configured per-connection bandwidth limit.
+func TestRetrBandwidthLimited(t *testing.T) {
+	// 200 KiB/s per connection; the file is 400 KiB, so after the initial
+	// 200 KiB burst (one second worth of tokens) the remaining 200 KiB must
+	// take at least ~1s.
+	const limit = 200 * 1024
+	const size = 400 * 1024
+	srv, addr := startTestServer(t, func(cfg *config.Config) {
+		cfg.BandwidthLimit = limit
+	})
+	writeTestFile(t, srv.cfg.ServeDir, "big.bin", strings.Repeat("x", size))
+
+	c := dialTestClient(t, addr)
+	c.login()
+
+	ln := setupActiveMode(t, c)
+	start := time.Now()
+	c.cmd("RETR big.bin")
+	c.expect(150)
+	got := readDataConn(t, c, ln)
+	elapsed := time.Since(start)
+	c.expect(226, "Transfer complete")
+
+	if len(got) != size {
+		t.Fatalf("RETR data = %d bytes, want %d", len(got), size)
+	}
+	minElapsed := time.Duration(size-limit) * time.Second / limit // ~1s
+	if elapsed < minElapsed*9/10 {
+		t.Errorf("RETR of %d bytes at %d B/s took %v, want at least ~%v", size, limit, elapsed, minElapsed)
+	}
+}
+
 func TestPortSyntaxErrors(t *testing.T) {
 	_, addr := startTestServer(t, nil)
 	c := dialTestClient(t, addr)

@@ -5,11 +5,86 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
+
+// Bandwidth is a bandwidth limit in bytes per second. The zero value means
+// unlimited. In the YAML configuration it may be given as a bare number of
+// bytes per second or as a human-readable string such as "512KiB/s" or
+// "10MB/s" (units B/KB/MB/GB/TB are decimal, KiB/MiB/GiB/TiB are binary,
+// case-insensitive, with an optional "/s" suffix).
+type Bandwidth int64
+
+// MarshalYAML serializes the limit as a plain number of bytes per second,
+// so Encode/Parse round-trips losslessly through the re-exec environment.
+func (b Bandwidth) MarshalYAML() (any, error) {
+	return int64(b), nil
+}
+
+// UnmarshalYAML parses a bandwidth limit from a YAML scalar: a bare number
+// (bytes per second) or a value with a unit suffix, e.g. "10MiB/s".
+func (b *Bandwidth) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind != yaml.ScalarNode {
+		return fmt.Errorf("bandwidth_limit must be a scalar, e.g. \"10MiB/s\"")
+	}
+	n, err := ParseBandwidth(value.Value)
+	if err != nil {
+		return err
+	}
+	*b = Bandwidth(n)
+	return nil
+}
+
+// bandwidthUnits maps lower-cased unit suffixes to their multiplier in
+// bytes. Decimal units (KB, MB, ...) are 1000-based, binary units (KiB,
+// MiB, ...) are 1024-based. The empty unit and "b" mean bytes.
+var bandwidthUnits = map[string]float64{
+	"": 1, "b": 1,
+	"k": 1e3, "kb": 1e3,
+	"m": 1e6, "mb": 1e6,
+	"g": 1e9, "gb": 1e9,
+	"t": 1e12, "tb": 1e12,
+	"kib": 1 << 10, "mib": 1 << 20, "gib": 1 << 30, "tib": 1 << 40,
+}
+
+// ParseBandwidth parses a bandwidth limit string into bytes per second.
+// Accepted forms: a bare number ("1048576"), or "<value><unit>" with an
+// optional "/s" suffix ("10MB/s", "512KiB/s", "1.5G"). An empty string or
+// "0" means unlimited (0 bytes per second cap). Negative values, unknown
+// units and overflow are rejected.
+func ParseBandwidth(s string) (int64, error) {
+	orig := s
+	s = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(s), " ", ""))
+	s = strings.TrimSuffix(s, "/s")
+	if s == "" || s == "0" {
+		return 0, nil
+	}
+	// Split the numeric prefix from the unit suffix.
+	i := 0
+	for i < len(s) && (s[i] >= '0' && s[i] <= '9' || s[i] == '.') {
+		i++
+	}
+	num, unit := s[:i], s[i:]
+	mult, ok := bandwidthUnits[unit]
+	if num == "" || !ok {
+		return 0, fmt.Errorf("invalid bandwidth_limit %q: want a number with optional unit, e.g. \"10MiB/s\"", orig)
+	}
+	f, err := strconv.ParseFloat(num, 64)
+	if err != nil || f < 0 {
+		return 0, fmt.Errorf("invalid bandwidth_limit %q: %v", orig, err)
+	}
+	v := f * mult
+	if v > math.MaxInt64 {
+		return 0, fmt.Errorf("bandwidth_limit %q is too large", orig)
+	}
+	return int64(v), nil
+}
 
 // Config holds all server configuration.
 type Config struct {
@@ -22,6 +97,11 @@ type Config struct {
 	// PassivePortMin and PassivePortMax define the passive port range.
 	PassivePortMin int `yaml:"passive_port_min"`
 	PassivePortMax int `yaml:"passive_port_max"`
+
+	// BandwidthLimit caps the rate of each individual connection (control
+	// and data connections alike) in bytes per second. 0 (the default)
+	// means unlimited.
+	BandwidthLimit Bandwidth `yaml:"bandwidth_limit"`
 
 	// ServeDir is the single directory that is served (and chrooted into
 	// when running as root).
@@ -47,6 +127,7 @@ func Default() *Config {
 		PassiveEnabled: false,
 		PassivePortMin: 40000,
 		PassivePortMax: 40100,
+		BandwidthLimit: 0, // unlimited
 		User:           "nobody",
 		Group:          "nogroup",
 		Chroot:         true,
@@ -142,6 +223,10 @@ func (c *Config) Validate() error {
 	case "debug", "info", "warn", "error":
 	default:
 		return fmt.Errorf("log_level must be one of: debug, info, warn, error (got %q)", c.LogLevel)
+	}
+
+	if c.BandwidthLimit < 0 {
+		return fmt.Errorf("bandwidth_limit must not be negative (got %d)", c.BandwidthLimit)
 	}
 
 	if c.PassiveEnabled {

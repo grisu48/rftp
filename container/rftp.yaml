@@ -11,5 +11,6 @@ serve_dir: /ftp             # served directory (mount your data here)
 chroot: false               # requires root; the container runs unprivileged
 read_only_mount: false      # requires root + CAP_SYS_ADMIN (private mount namespace); the container runs unprivileged
 passive_enabled: false      # passive mode (PASV/EPSV) disabled by default
+bandwidth_limit: 0          # per-connection bandwidth limit in bytes/sec (0 = unlimited); e.g. "512KiB/s", "10MB/s"
 log_level: info             # debug, info, warn, error
 # user/group are optional (default: nobody/nogroup); unused when unprivileged

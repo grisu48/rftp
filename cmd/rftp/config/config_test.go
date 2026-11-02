@@ -268,6 +268,7 @@ func TestEncodeParseRoundTrip(t *testing.T) {
 	cfg.Chroot = true
 	cfg.ReadOnlyMount = true
 	cfg.LogLevel = "debug"
+	cfg.BandwidthLimit = 10 * 1024 * 1024
 
 	data, err := Encode(cfg)
 	if err != nil {
@@ -289,4 +290,102 @@ func mustGetwd(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return wd
+}
+
+func TestParseBandwidth(t *testing.T) {
+	cases := []struct {
+		in      string
+		want    int64
+		wantErr bool
+	}{
+		{"", 0, false},
+		{"0", 0, false},
+		{"0B/s", 0, false},
+		{"1048576", 1048576, false},
+		{"100B/s", 100, false},
+		{"512KiB/s", 512 * 1024, false},
+		{"512kib/s", 512 * 1024, false},
+		{"10MB/s", 10 * 1000 * 1000, false},
+		{"10MiB/s", 10 * 1024 * 1024, false},
+		{"2GiB", 2 << 30, false},
+		{"1.5kb", 1500, false},
+		{"10 MB / s", 10 * 1000 * 1000, false},
+		{"1TB/s", 1e12, false},
+		{"1TiB/s", 1 << 40, false},
+		// Errors: negative, missing number, unknown unit, overflow, garbage.
+		{"-5", 0, true},
+		{"-5MB/s", 0, true},
+		{"MB/s", 0, true},
+		{"10XB/s", 0, true},
+		{"abc", 0, true},
+		{"10.5.2MiB/s", 0, true},
+		{"99999999999TiB/s", 0, true},
+	}
+	for _, tc := range cases {
+		got, err := ParseBandwidth(tc.in)
+		if tc.wantErr {
+			if err == nil {
+				t.Errorf("ParseBandwidth(%q) = %d, want error", tc.in, got)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("ParseBandwidth(%q) unexpected error: %v", tc.in, err)
+			continue
+		}
+		if got != tc.want {
+			t.Errorf("ParseBandwidth(%q) = %d, want %d", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestLoadBandwidthLimit(t *testing.T) {
+	dir := t.TempDir()
+	path := writeTempConfig(t, "serve_dir: "+dir+"\nbandwidth_limit: \"512KiB/s\"\n")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.BandwidthLimit != 512*1024 {
+		t.Errorf("BandwidthLimit = %d, want %d", cfg.BandwidthLimit, 512*1024)
+	}
+
+	// A bare number is bytes per second.
+	path = writeTempConfig(t, "serve_dir: "+dir+"\nbandwidth_limit: 1048576\n")
+	cfg, err = Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.BandwidthLimit != 1048576 {
+		t.Errorf("BandwidthLimit = %d, want 1048576", cfg.BandwidthLimit)
+	}
+
+	// Omitted means unlimited (0).
+	path = writeTempConfig(t, "serve_dir: "+dir+"\n")
+	cfg, err = Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.BandwidthLimit != 0 {
+		t.Errorf("default BandwidthLimit = %d, want 0 (unlimited)", cfg.BandwidthLimit)
+	}
+}
+
+func TestLoadInvalidBandwidthLimit(t *testing.T) {
+	dir := t.TempDir()
+	for _, v := range []string{`"nonsense"`, `"10XB/s"`, `"-5"`} {
+		path := writeTempConfig(t, "serve_dir: "+dir+"\nbandwidth_limit: "+v+"\n")
+		if _, err := Load(path); err == nil {
+			t.Errorf("Load with bandwidth_limit: %s must fail", v)
+		}
+	}
+}
+
+func TestValidateNegativeBandwidthLimit(t *testing.T) {
+	cfg := Default()
+	cfg.ServeDir = t.TempDir()
+	cfg.BandwidthLimit = -1
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "bandwidth_limit") {
+		t.Errorf("expected bandwidth_limit error, got: %v", err)
+	}
 }

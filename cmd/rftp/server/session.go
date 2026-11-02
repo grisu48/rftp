@@ -67,7 +67,11 @@ type Session struct {
 }
 
 // NewSession creates a session for a freshly accepted control connection.
+// When a bandwidth limit is configured, the control connection is wrapped in
+// a per-connection rate limiter, so every byte of the session (replies and
+// commands alike) counts against the limit.
 func NewSession(srv *Server, conn net.Conn) *Session {
+	conn = throttleConn(conn, int64(srv.cfg.BandwidthLimit))
 	remoteIP := net.IP(nil)
 	if host, _, err := net.SplitHostPort(conn.RemoteAddr().String()); err == nil {
 		remoteIP = normalizeIP(net.ParseIP(host))
@@ -344,7 +348,9 @@ func (s *Session) openDataConn() (net.Conn, error) {
 				continue
 			}
 			_ = conn.SetDeadline(time.Now().Add(dataTransferTimeout))
-			return conn, nil
+			// Each data connection gets its own limiter: the configured
+			// bandwidth limit is per connection, never shared.
+			return throttleConn(conn, int64(s.srv.cfg.BandwidthLimit)), nil
 		}
 	}
 	if active != nil {
@@ -354,7 +360,7 @@ func (s *Session) openDataConn() (net.Conn, error) {
 			return nil, err
 		}
 		_ = conn.SetDeadline(time.Now().Add(dataTransferTimeout))
-		return conn, nil
+		return throttleConn(conn, int64(s.srv.cfg.BandwidthLimit)), nil
 	}
 	return nil, errNoDataConn
 }

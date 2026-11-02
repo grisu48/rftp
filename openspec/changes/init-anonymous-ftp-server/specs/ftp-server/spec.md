@@ -150,6 +150,27 @@ Passive FTP mode (`PASV`/`EPSV`) SHALL be disabled by default and MUST be explic
 
 ---
 
+### Requirement: Per-connection bandwidth limit
+The server MUST support an optional `bandwidth_limit` configuration value capping the rate of each connection in bytes per second. The value may be a bare number (bytes per second) or a human-readable string with a unit suffix (e.g. `512KiB/s`, `10MB/s`; decimal units KB/MB/GB/TB, binary units KiB/MiB/GiB/TiB, case-insensitive, optional `/s`). `0` or unset SHALL mean unlimited (the default). When set, every connection (control and data) SHALL be limited individually by a token bucket (initial burst of one second worth allowed); the limit is per connection and MUST NOT be shared across connections. Invalid values (negative, non-numeric, unknown unit, overflow) SHALL be rejected at startup.
+
+#### Scenario: Unlimited by default
+- **WHEN** no `bandwidth_limit` is configured (or it is `0`)
+- **THEN** connections are not rate-limited
+
+#### Scenario: Human-readable limit accepted
+- **WHEN** `bandwidth_limit: "10MiB/s"` is configured
+- **THEN** the limit is 10485760 bytes per second applied to each connection
+
+#### Scenario: Invalid limit rejected
+- **WHEN** `bandwidth_limit` is negative, non-numeric, has an unknown unit or overflows
+- **THEN** the server logs an error and exits with a non-zero status
+
+#### Scenario: Data transfer throttled per connection
+- **WHEN** `bandwidth_limit` is set and a client downloads a file over a data connection
+- **THEN** the transfer rate of that connection does not exceed the configured limit (beyond the initial one-second burst)
+
+---
+
 ### Requirement: Active mode support
 The server MUST support active mode (`PORT`/`EPRT`) for data transfers.
 

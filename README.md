@@ -30,6 +30,9 @@ system is unaffected), and dropping root privileges.
 - **Dual-stack** — listens on both IPv4 and IPv6 via a single dual-stack socket.
 - **Active and passive mode** — `PORT`/`EPRT`/`LPRT` (active) always supported;
   `PASV`/`EPSV` (passive) disabled by default, enable via configuration.
+ - **Per-connection bandwidth limit** — optional `bandwidth_limit` (e.g.
+   `10MiB/s` or `512KiB/s`; `0` = unlimited, the default) caps each connection
+   (control and data) individually via a token bucket.
 - **Client-friendly fallbacks** — recognized but unimplemented commands (e.g.
   `LPSV`, `STAT`, `ABOR`, `MLSD`) are answered with `502 Command not
   implemented` (not `500`), so standard clients such as the classic `ftp`
@@ -99,6 +102,8 @@ listen_addr: ":21"          # dual-stack IPv4/IPv6
 passive_enabled: false      # PASV/EPSV disabled by default
 passive_port_min: 40000
 passive_port_max: 40100
+bandwidth_limit: 0          # per-connection limit in bytes/sec (0 = unlimited);
+                            # human-readable values work too: "512KiB/s", "10MB/s"
 
 serve_dir: /srv/ftp         # directory to serve (chrooted when root)
 user: nobody                # optional: privilege drop target (default: nobody)
