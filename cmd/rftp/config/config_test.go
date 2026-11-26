@@ -389,3 +389,211 @@ func TestValidateNegativeBandwidthLimit(t *testing.T) {
 		t.Errorf("expected bandwidth_limit error, got: %v", err)
 	}
 }
+
+// envLookup returns an environment lookup function backed by the given map.
+func envLookup(env map[string]string) func(name string) (string, bool) {
+	return func(name string) (string, bool) {
+		v, ok := env[name]
+		return v, ok
+	}
+}
+
+func TestEnvName(t *testing.T) {
+	cases := map[string]string{
+		"listen_addr":     "RFTP_LISTEN_ADDR",
+		"serve_dir":       "RFTP_SERVE_DIR",
+		"passive_enabled": "RFTP_PASSIVE_ENABLED",
+		"bandwidth_limit": "RFTP_BANDWIDTH_LIMIT",
+		"read_only_mount": "RFTP_READ_ONLY_MOUNT",
+		"log_level":       "RFTP_LOG_LEVEL",
+	}
+	for key, want := range cases {
+		if got := EnvName(key); got != want {
+			t.Errorf("EnvName(%q) = %q, want %q", key, got, want)
+		}
+	}
+}
+
+func TestLoadWithEnvOnly(t *testing.T) {
+	// No config file: configuration comes from RFTP_* environment variables.
+	dir := t.TempDir()
+	env := map[string]string{
+		"RFTP_LISTEN_ADDR":      "127.0.0.1:2121",
+		"RFTP_SERVE_DIR":        dir,
+		"RFTP_PASSIVE_ENABLED":  "true",
+		"RFTP_PASSIVE_PORT_MIN": "41000",
+		"RFTP_PASSIVE_PORT_MAX": "41050",
+		"RFTP_BANDWIDTH_LIMIT":  "10MiB/s",
+		"RFTP_CHROOT":           "false",
+		"RFTP_READ_ONLY_MOUNT":  "false",
+		"RFTP_LOG_LEVEL":        "debug",
+		"RFTP_USER":             "ftpd",
+		"RFTP_GROUP":            "ftp",
+	}
+	cfg, err := LoadWithEnv("", envLookup(env))
+	if err != nil {
+		t.Fatalf("LoadWithEnv: %v", err)
+	}
+	if cfg.ListenAddr != "127.0.0.1:2121" {
+		t.Errorf("ListenAddr = %q", cfg.ListenAddr)
+	}
+	if cfg.ServeDir != dir {
+		t.Errorf("ServeDir = %q, want %q", cfg.ServeDir, dir)
+	}
+	if !cfg.PassiveEnabled {
+		t.Error("PassiveEnabled = false, want true")
+	}
+	if cfg.PassivePortMin != 41000 || cfg.PassivePortMax != 41050 {
+		t.Errorf("passive ports = %d-%d", cfg.PassivePortMin, cfg.PassivePortMax)
+	}
+	if cfg.BandwidthLimit != 10*1024*1024 {
+		t.Errorf("BandwidthLimit = %d, want %d", cfg.BandwidthLimit, 10*1024*1024)
+	}
+	if cfg.Chroot || cfg.ReadOnlyMount {
+		t.Error("Chroot/ReadOnlyMount should be false")
+	}
+	if cfg.LogLevel != "debug" {
+		t.Errorf("LogLevel = %q", cfg.LogLevel)
+	}
+	if cfg.User != "ftpd" || cfg.Group != "ftp" {
+		t.Errorf("user/group = %q/%q", cfg.User, cfg.Group)
+	}
+}
+
+func TestLoadWithEnvFromProcessEnv(t *testing.T) {
+	// The process environment (os.LookupEnv) is the lookup used by main.
+	dir := t.TempDir()
+	t.Setenv("RFTP_LISTEN_ADDR", ":2121")
+	t.Setenv("RFTP_SERVE_DIR", dir)
+	t.Setenv("RFTP_PASSIVE_ENABLED", "true")
+	cfg, err := LoadWithEnv("", os.LookupEnv)
+	if err != nil {
+		t.Fatalf("LoadWithEnv: %v", err)
+	}
+	if cfg.ListenAddr != ":2121" || cfg.ServeDir != dir || !cfg.PassiveEnabled {
+		t.Errorf("unexpected config: %+v", cfg)
+	}
+}
+
+func TestConfigFileTakesPrecedenceOverEnv(t *testing.T) {
+	// Keys set in both the file and the environment use the file value;
+	// keys set only in the environment keep the environment value.
+	dir := t.TempDir()
+	path := writeTempConfig(t, `
+listen_addr: "127.0.0.1:9999"
+passive_enabled: true
+bandwidth_limit: 1024
+serve_dir: `+dir+`
+chroot: false
+read_only_mount: false
+`)
+	env := map[string]string{
+		"RFTP_LISTEN_ADDR":     ":2121",   // file wins -> 127.0.0.1:9999
+		"RFTP_PASSIVE_ENABLED": "false",   // file wins -> true
+		"RFTP_BANDWIDTH_LIMIT": "10MiB/s", // file wins -> 1024
+		"RFTP_LOG_LEVEL":       "debug",   // only in env -> debug
+		"RFTP_USER":            "ftpd",    // only in env -> ftpd
+	}
+	cfg, err := LoadWithEnv(path, envLookup(env))
+	if err != nil {
+		t.Fatalf("LoadWithEnv: %v", err)
+	}
+	if cfg.ListenAddr != "127.0.0.1:9999" {
+		t.Errorf("ListenAddr = %q, want file value 127.0.0.1:9999", cfg.ListenAddr)
+	}
+	if !cfg.PassiveEnabled {
+		t.Error("PassiveEnabled = false, want file value true")
+	}
+	if cfg.BandwidthLimit != 1024 {
+		t.Errorf("BandwidthLimit = %d, want file value 1024", cfg.BandwidthLimit)
+	}
+	if cfg.LogLevel != "debug" {
+		t.Errorf("LogLevel = %q, want env value debug", cfg.LogLevel)
+	}
+	if cfg.User != "ftpd" {
+		t.Errorf("User = %q, want env value ftpd", cfg.User)
+	}
+}
+
+func TestLoadWithEnvInvalidValues(t *testing.T) {
+	dir := t.TempDir()
+	base := map[string]string{
+		"RFTP_LISTEN_ADDR": ":2121",
+		"RFTP_SERVE_DIR":   dir,
+	}
+	cases := map[string]string{
+		"RFTP_BANDWIDTH_LIMIT":  "fast",
+		"RFTP_PASSIVE_ENABLED":  "maybe",
+		"RFTP_PASSIVE_PORT_MIN": "abc",
+		"RFTP_CHROOT":           "2",
+	}
+	for name, value := range cases {
+		env := map[string]string{}
+		for k, v := range base {
+			env[k] = v
+		}
+		env[name] = value
+		_, err := LoadWithEnv("", envLookup(env))
+		if err == nil {
+			t.Errorf("LoadWithEnv with %s=%q must fail", name, value)
+			continue
+		}
+		if !strings.Contains(err.Error(), name) {
+			t.Errorf("error for %s=%q should name the variable, got: %v", name, value, err)
+		}
+	}
+}
+
+func TestLoadWithEnvMissingRequiredFields(t *testing.T) {
+	// No file and no env: serve_dir has no default and is missing from all
+	// sources, so it must be reported.
+	if _, err := LoadWithEnv("", envLookup(nil)); err == nil ||
+		!strings.Contains(err.Error(), "serve_dir is required") {
+		t.Errorf("expected serve_dir required error, got: %v", err)
+	}
+	// listen_addr explicitly emptied via the environment: missing from all
+	// sources, so it must be reported.
+	env := map[string]string{"RFTP_SERVE_DIR": t.TempDir(), "RFTP_LISTEN_ADDR": ""}
+	if _, err := LoadWithEnv("", envLookup(env)); err == nil ||
+		!strings.Contains(err.Error(), "listen_addr is required") {
+		t.Errorf("expected listen_addr required error, got: %v", err)
+	}
+}
+
+func TestLoadWithEnvIgnoresUnknownAndReservedVars(t *testing.T) {
+	// Unknown RFTP_* variables and the reserved InlineEnv (RFTP_CONFIG) are
+	// not configuration keys and must be ignored.
+	dir := t.TempDir()
+	env := map[string]string{
+		"RFTP_LISTEN_ADDR": ":2121",
+		"RFTP_SERVE_DIR":   dir,
+		"RFTP_CONFIG":      "not yaml config: [",
+		"RFTP_UNKNOWN":     "whatever",
+	}
+	cfg, err := LoadWithEnv("", envLookup(env))
+	if err != nil {
+		t.Fatalf("LoadWithEnv: %v", err)
+	}
+	if cfg.ListenAddr != ":2121" || cfg.ServeDir != dir {
+		t.Errorf("unexpected config: %+v", cfg)
+	}
+}
+
+func TestLoadWithEnvEmptyValueUsesDefault(t *testing.T) {
+	// An explicitly empty user/group env var behaves like an empty value in
+	// the config file: the nobody/nogroup defaults apply.
+	dir := t.TempDir()
+	env := map[string]string{
+		"RFTP_LISTEN_ADDR": ":2121",
+		"RFTP_SERVE_DIR":   dir,
+		"RFTP_USER":        "",
+		"RFTP_GROUP":       "",
+	}
+	cfg, err := LoadWithEnv("", envLookup(env))
+	if err != nil {
+		t.Fatalf("LoadWithEnv: %v", err)
+	}
+	if cfg.User != "nobody" || cfg.Group != "nogroup" {
+		t.Errorf("user/group = %q/%q, want defaults nobody/nogroup", cfg.User, cfg.Group)
+	}
+}

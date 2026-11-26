@@ -14,9 +14,9 @@
 - [x] 2.4 Validate serve directory exists and is readable
 - [x] 2.5 Add unit tests for config parsing
 - [x] 2.6 Make `user`/`group` optional (default `nobody`/`nogroup` when unset)
-- [ ] 2.7 Add environment variable configuration (`RFTP_<KEY>`), with the config file taking precedence over environment variables per key
-- [ ] 2.8 Make `-config` optional when required fields are provided via environment variables; reject invalid env var values at startup
-- [ ] 2.9 Add unit tests for env var parsing and file-over-env precedence
+- [x] 2.7 Add environment variable configuration (`RFTP_<KEY>`), with the config file taking precedence over environment variables per key
+- [x] 2.8 Make `-config` optional when required fields are provided via environment variables; reject invalid env var values at startup
+- [x] 2.9 Add unit tests for env var parsing and file-over-env precedence
 
 ## 3. Security Layer
 - [x] 3.1 Implement chroot functionality (`security/chroot.go`)

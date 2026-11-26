@@ -44,10 +44,14 @@ read-only.
 
 ## Configuration
 
-A single YAML file is passed via `-config` (default: `config.yaml`); see
-`config.example.yaml`. Only `listen_addr` and `serve_dir` are required.
-`user`/`group` are optional (default `nobody`/`nogroup`). Passive mode is
-disabled by default (`passive_enabled: false`).
+Configuration comes from a YAML file passed via `-config` (optional; when
+omitted, from `RFTP_*` environment variables alone) and/or `RFTP_*`
+environment variables — each key maps to `RFTP_` + uppercased key (e.g.
+`listen_addr` → `RFTP_LISTEN_ADDR`); see `config.example.yaml`. The config
+file takes precedence over environment variables per key. Only `listen_addr`
+and `serve_dir` are required. `user`/`group` are optional (default
+`nobody`/`nogroup`). Passive mode is disabled by default
+(`passive_enabled: false`).
 
 ## Security model — non-negotiable
 

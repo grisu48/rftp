@@ -21,7 +21,7 @@ import (
 const VERSION = "1.0"
 
 func main() {
-	configPath := flag.String("config", "config.yaml", "path to the YAML configuration file")
+	configPath := flag.String("config", "", "path to the YAML configuration file (optional; when omitted, configuration is taken from RFTP_* environment variables)")
 	flag.Parse()
 
 	if err := run(*configPath); err != nil {
@@ -32,13 +32,18 @@ func main() {
 
 func run(configPath string) error {
 	// The re-executed image receives the configuration via the environment:
-	// after chroot the config file path may no longer be resolvable.
+	// after chroot the config file path may no longer be resolvable. The
+	// inline config is the already-merged configuration, so environment
+	// variables are not re-applied — the config file keeps precedence over
+	// them. Without the inline config, the configuration comes from the
+	// RFTP_* environment variables and, when -config is given, from the
+	// config file (which takes precedence per key).
 	var cfg *config.Config
 	var err error
 	if inline := os.Getenv(config.InlineEnv); inline != "" {
 		cfg, err = config.Parse([]byte(inline))
 	} else {
-		cfg, err = config.Load(configPath)
+		cfg, err = config.LoadWithEnv(configPath, os.LookupEnv)
 	}
 	if err != nil {
 		return err

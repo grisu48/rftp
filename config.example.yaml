@@ -1,5 +1,11 @@
 # Example configuration for rftp, a read-only anonymous FTP server.
 # Start with: ./rftp -config config.example.yaml
+#
+# Every key below can also be set via an environment variable named RFTP_
+# + uppercased key, e.g. listen_addr -> RFTP_LISTEN_ADDR, or run without
+# -config at all, e.g.:
+#   RFTP_LISTEN_ADDR=":21" RFTP_SERVE_DIR=/srv/ftp ./rftp
+# The config file takes precedence over environment variables per key.
 
 # Server settings
 listen_addr: ":21"          # Listen address; a wildcard address gives dual-stack IPv4/IPv6

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-// Package config handles loading and validation of the YAML configuration file.
+// Package config handles loading and validation of the server configuration,
+// from a YAML configuration file and/or RFTP_* environment variables.
 package config
 
 import (
@@ -133,23 +134,104 @@ func Default() *Config {
 // InlineEnv is the environment variable used to pass the serialized
 // configuration to the re-executed process image (see security.Reexec): after
 // chroot the config file path may be unreachable, so the new image reads the
-// configuration from this variable instead of from a file.
+// configuration from this variable instead of from a file. It is reserved
+// for this purpose and is not a configuration key.
 const InlineEnv = "RFTP_CONFIG"
+
+// EnvPrefix is the prefix of the environment variables that configure the
+// server. Each configuration key maps to an environment variable named
+// EnvPrefix + the uppercased key, e.g. "listen_addr" -> "RFTP_LISTEN_ADDR",
+// "read_only_mount" -> "RFTP_READ_ONLY_MOUNT".
+const EnvPrefix = "RFTP_"
+
+// EnvName returns the environment variable name for a configuration key.
+func EnvName(key string) string {
+	return EnvPrefix + strings.ToUpper(key)
+}
+
+// applyEnv applies configuration from environment variables to cfg. For each
+// known configuration key, the variable EnvName(key) is looked up and its
+// value is parsed with the same rules as the corresponding YAML field.
+// Unknown RFTP_* variables (including the reserved InlineEnv) are ignored.
+// lookup is typically os.LookupEnv.
+func applyEnv(cfg *Config, lookup func(name string) (value string, ok bool)) error {
+	// String fields take the raw environment value (an environment variable
+	// is already a literal string); other fields are parsed as YAML scalars,
+	// so they accept exactly the same values as in the config file.
+	setters := map[string]func(value string) error{
+		"listen_addr":      func(v string) error { cfg.ListenAddr = v; return nil },
+		"serve_dir":        func(v string) error { cfg.ServeDir = v; return nil },
+		"user":             func(v string) error { cfg.User = v; return nil },
+		"group":            func(v string) error { cfg.Group = v; return nil },
+		"log_level":        func(v string) error { cfg.LogLevel = v; return nil },
+		"passive_enabled":  func(v string) error { return parseScalar(&cfg.PassiveEnabled, v) },
+		"passive_port_min": func(v string) error { return parseScalar(&cfg.PassivePortMin, v) },
+		"passive_port_max": func(v string) error { return parseScalar(&cfg.PassivePortMax, v) },
+		"bandwidth_limit":  func(v string) error { return parseScalar(&cfg.BandwidthLimit, v) },
+		"chroot":           func(v string) error { return parseScalar(&cfg.Chroot, v) },
+		"read_only_mount":  func(v string) error { return parseScalar(&cfg.ReadOnlyMount, v) },
+	}
+	for key, set := range setters {
+		name := EnvName(key)
+		value, ok := lookup(name)
+		if !ok {
+			continue
+		}
+		if err := set(value); err != nil {
+			return fmt.Errorf("invalid value %q for environment variable %s (%s): %w", value, name, key, err)
+		}
+	}
+	return nil
+}
+
+// parseScalar unmarshals a single YAML scalar (an environment variable value)
+// into field, applying the same rules as the corresponding config file field.
+func parseScalar(field any, value string) error {
+	return yaml.Unmarshal([]byte(value), field)
+}
 
 // Load reads, parses and validates the configuration file at path.
 // Missing files, invalid YAML and invalid values are reported as errors.
 func Load(path string) (*Config, error) {
-	// #nosec G304 -- path is the operator-supplied -config flag value, not remote input.
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("cannot read config file %s: %w", path, err)
-	}
+	return load(path, nil)
+}
+
+// LoadWithEnv loads the configuration from environment variables and, when
+// path is not empty, from the configuration file at path. Environment
+// variables (RFTP_<KEY>) are applied first and the config file is parsed on
+// top of them, so the config file takes precedence over environment variables
+// on a per-key basis: keys present in both use the file value, and environment
+// variables only supply values for keys absent from the file. When path is
+// empty, configuration is taken from the environment alone. lookup is
+// typically os.LookupEnv.
+func LoadWithEnv(path string, lookup func(name string) (value string, ok bool)) (*Config, error) {
+	return load(path, lookup)
+}
+
+func load(path string, lookup func(name string) (value string, ok bool)) (*Config, error) {
 	cfg := Default()
-	if err := yaml.Unmarshal(data, cfg); err != nil {
-		return nil, fmt.Errorf("cannot parse config file %s: %w", path, err)
+	if lookup != nil {
+		if err := applyEnv(cfg, lookup); err != nil {
+			return nil, err
+		}
+	}
+	if path != "" {
+		// #nosec G304 -- path is the operator-supplied -config flag value, not remote input.
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("cannot read config file %s: %w", path, err)
+		}
+		// Unmarshal only sets the keys present in the file, so the file
+		// values override the environment on a per-key basis.
+		if err := yaml.Unmarshal(data, cfg); err != nil {
+			return nil, fmt.Errorf("cannot parse config file %s: %w", path, err)
+		}
 	}
 	if err := cfg.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid config file %s: %w", path, err)
+		if path != "" {
+			return nil, fmt.Errorf("invalid config file %s: %w", path, err)
+		}
+		return nil, fmt.Errorf("invalid configuration (provide it via a config file or %s* environment variables): %w", EnvPrefix, err)
 	}
 	return cfg, nil
 }

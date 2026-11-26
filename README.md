@@ -94,8 +94,9 @@ keep their normal (writable) view of the served directory.
 
 ### Configuration
 
-All configuration lives in a single YAML file (see
-[`config.example.yaml`](config.example.yaml)):
+Configuration comes from a YAML file passed via `-config` and/or from
+`RFTP_*` environment variables (see
+[`config.example.yaml`](config.example.yaml) for all options):
 
 ```yaml
 listen_addr: ":21"          # dual-stack IPv4/IPv6
@@ -119,11 +120,26 @@ Only `listen_addr` and `serve_dir` are required. `user` and `group` are
 server still never serves as root — when started as root it always drops
 privileges (to the configured or default target) or exits.
 
+Every key can also be set via an environment variable named `RFTP_` +
+uppercased key, e.g. `listen_addr` → `RFTP_LISTEN_ADDR`,
+`bandwidth_limit` → `RFTP_BANDWIDTH_LIMIT` (same values as in the YAML file,
+e.g. `RFTP_BANDWIDTH_LIMIT=10MiB/s`). **The config file takes precedence over
+environment variables** on a per-key basis: a key set in both uses the file
+value; env vars only fill keys absent from the file. `-config` is optional —
+when omitted, configuration is taken from the environment alone:
+
+```sh
+RFTP_LISTEN_ADDR=":21" RFTP_SERVE_DIR=/srv/ftp ./rftp
+```
+
+(`RFTP_CONFIG` is reserved internally to pass the merged configuration to the
+startup re-exec after chroot, and is not a configuration key.)
+
 - Info/debug logs go to **stdout**, warnings/errors go to **stderr**. No log
   files are written.
-- A missing/unreadable config file, invalid YAML, or missing required fields
-  (`listen_addr`, `serve_dir`) cause the server to log an error and exit with a
-  non-zero status.
+- A missing/unreadable config file, invalid YAML, invalid environment variable
+  values, or missing required fields (`listen_addr`, `serve_dir`) from all
+  sources cause the server to log an error and exit with a non-zero status.
 - `SIGTERM`/`SIGINT` trigger a graceful shutdown: the listener is closed and all
   active connections are closed before exiting with status 0.
 

@@ -5,7 +5,7 @@ A minimal, security-focused, read-only anonymous FTP server written in Go. The s
 
 ## Tech Stack
 - **Language**: Go (standard library only)
-- **Configuration**: YAML (single external dependency: `gopkg.in/yaml.v3` or similar)
+- **Configuration**: YAML file (`-config`) and/or `RFTP_*` environment variables (config file takes precedence per key); single external dependency: `gopkg.in/yaml.v3` or similar
 - **Target Platforms**: Linux (primary), with privilege dropping and chroot support
 
 ## Project Conventions
@@ -16,7 +16,7 @@ A minimal, security-focused, read-only anonymous FTP server written in Go. The s
 - Security-first: all file operations must be validated and sandboxed
 
 ### Architecture
-- Single binary, single configuration file
+- Single binary, configuration via a single YAML file and/or `RFTP_*` environment variables
 - Clear separation: config parsing, server lifecycle, FTP protocol handler, security (privilege drop, chroot)
 - No plugin system, no extensibility beyond configuration
 
