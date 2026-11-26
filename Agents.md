@@ -49,9 +49,10 @@ omitted, from `RFTP_*` environment variables alone) and/or `RFTP_*`
 environment variables — each key maps to `RFTP_` + uppercased key (e.g.
 `listen_addr` → `RFTP_LISTEN_ADDR`); see `config.example.yaml`. The config
 file takes precedence over environment variables per key. Only `listen_addr`
-and `serve_dir` are required. `user`/`group` are optional (default
-`nobody`/`nogroup`). Passive mode is disabled by default
-(`passive_enabled: false`).
+and `serve_dir` are required. `user`/`group` are optional and default to the
+predefined numeric IDs `65534`/`65534`; a configured value may be a name
+(e.g. `nobody`, resolved via the user database) or a numeric ID. Passive mode
+is disabled by default (`passive_enabled: false`).
 
 ## Security model — non-negotiable
 
@@ -67,8 +68,9 @@ and `serve_dir` are required. `user`/`group` are optional (default
 - **Secure by default (fail-closed)**: every configured security measure
   (chroot, read-only mount, privilege drop) MUST be applied or the program
   exits with a non-zero status. The server MUST NOT serve as root: a root start
-  always drops privileges (configured or default `nobody`/`nogroup` target);
-  an unprivileged start with `chroot`/`read_only_mount` enabled refuses to start.
+  always drops privileges (configured target, or the default numeric
+  `65534`/`65534`); an unprivileged start with `chroot`/`read_only_mount`
+  enabled refuses to start.
 - **Namespace-scoped isolation**: as root with `chroot`/`read_only_mount`
   enabled, the process re-execs itself at startup (same PID) after applying
   `unshare(CLONE_NEWNS)` + private propagation + chroot + read-only re-mount on

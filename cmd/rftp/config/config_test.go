@@ -73,8 +73,8 @@ func TestLoadAppliesDefaults(t *testing.T) {
 	if cfg.PassivePortMin != 40000 || cfg.PassivePortMax != 40100 {
 		t.Errorf("default passive ports = %d-%d", cfg.PassivePortMin, cfg.PassivePortMax)
 	}
-	if cfg.User != "nobody" || cfg.Group != "nogroup" {
-		t.Errorf("default user/group = %s/%s", cfg.User, cfg.Group)
+	if cfg.User != DefaultUser || cfg.Group != DefaultGroup {
+		t.Errorf("default user/group = %s/%s, want %s/%s", cfg.User, cfg.Group, DefaultUser, DefaultGroup)
 	}
 	if !cfg.Chroot {
 		t.Error("chroot should default to true")
@@ -190,8 +190,8 @@ func TestValidateUserGroupOptional(t *testing.T) {
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate with empty user/group must succeed: %v", err)
 	}
-	if cfg.User != "nobody" || cfg.Group != "nogroup" {
-		t.Errorf("user/group = %q/%q, want defaults nobody/nogroup", cfg.User, cfg.Group)
+	if cfg.User != DefaultUser || cfg.Group != DefaultGroup {
+		t.Errorf("user/group = %q/%q, want defaults %s/%s", cfg.User, cfg.Group, DefaultUser, DefaultGroup)
 	}
 
 	// Explicitly configured values are preserved.
@@ -214,8 +214,8 @@ func TestValidateUserGroupOptional(t *testing.T) {
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate with only user set: %v", err)
 	}
-	if cfg.User != "ftpd" || cfg.Group != "nogroup" {
-		t.Errorf("user/group = %q/%q, want ftpd/nogroup", cfg.User, cfg.Group)
+	if cfg.User != "ftpd" || cfg.Group != DefaultGroup {
+		t.Errorf("user/group = %q/%q, want ftpd/%s", cfg.User, cfg.Group, DefaultGroup)
 	}
 }
 
@@ -227,8 +227,8 @@ func TestLoadUserGroupExplicitlyEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load with explicitly empty user/group must succeed: %v", err)
 	}
-	if cfg.User != "nobody" || cfg.Group != "nogroup" {
-		t.Errorf("user/group = %q/%q, want defaults nobody/nogroup", cfg.User, cfg.Group)
+	if cfg.User != DefaultUser || cfg.Group != DefaultGroup {
+		t.Errorf("user/group = %q/%q, want defaults %s/%s", cfg.User, cfg.Group, DefaultUser, DefaultGroup)
 	}
 }
 
@@ -614,7 +614,7 @@ func TestLoadWithEnvIgnoresUnknownAndReservedVars(t *testing.T) {
 
 func TestLoadWithEnvEmptyValueUsesDefault(t *testing.T) {
 	// An explicitly empty user/group env var behaves like an empty value in
-	// the config file: the nobody/nogroup defaults apply.
+	// the config file: the predefined uid/gid defaults apply.
 	dir := t.TempDir()
 	env := map[string]string{
 		"RFTP_LISTEN_ADDR": ":2121",
@@ -626,7 +626,7 @@ func TestLoadWithEnvEmptyValueUsesDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadWithEnv: %v", err)
 	}
-	if cfg.User != "nobody" || cfg.Group != "nogroup" {
-		t.Errorf("user/group = %q/%q, want defaults nobody/nogroup", cfg.User, cfg.Group)
+	if cfg.User != DefaultUser || cfg.Group != DefaultGroup {
+		t.Errorf("user/group = %q/%q, want defaults %s/%s", cfg.User, cfg.Group, DefaultUser, DefaultGroup)
 	}
 }

@@ -66,7 +66,15 @@ The server MUST drop root privileges after binding to the port and performing ch
 
 #### Scenario: Privilege drop target defaults when user/group are not configured
 - **WHEN** the server starts as root without `user` or `group` configured (both are optional)
-- **THEN** the server drops privileges to the default `nobody`/`nogroup` before serving, and exits with non-zero status if the drop fails
+- **THEN** the server drops privileges to the predefined default uid/gid 65534/65534 before serving, and exits with non-zero status if the drop fails
+
+#### Scenario: Privilege drop targets given as names
+- **WHEN** `user` and/or `group` are configured as names (e.g. `user: nobody`, `group: nogroup`)
+- **THEN** the server resolves them via the user/group database and drops privileges to the resolved uid/gid; an unresolvable name is a fatal error (non-zero exit)
+
+#### Scenario: Privilege drop targets given as numeric IDs
+- **WHEN** `user` and/or `group` are configured as numeric IDs (e.g. `user: "65534"`)
+- **THEN** the server drops privileges to that numeric uid/gid directly, without requiring a user/group database
 
 #### Scenario: Privilege drop failure is fatal
 - **WHEN** privilege dropping fails
@@ -222,7 +230,7 @@ The server MUST accept a single YAML configuration file as a command-line argume
 
 #### Scenario: Optional user/group omitted
 - **WHEN** `user` and `group` are omitted (or explicitly set to an empty value) in the config file
-- **THEN** the server accepts the configuration and uses the defaults `nobody`/`nogroup` as the privilege drop target
+- **THEN** the server accepts the configuration and uses the predefined default uid/gid 65534/65534 as the privilege drop target
 
 ---
 

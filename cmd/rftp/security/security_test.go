@@ -8,7 +8,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 	"testing"
 )
@@ -43,6 +46,70 @@ func TestDropPrivilegesUnknownUserFails(t *testing.T) {
 	}
 	if IsRoot() {
 		t.Error("DropPrivileges with unknown user should not succeed even as root")
+	}
+}
+
+func TestResolveNumericIDs(t *testing.T) {
+	// Numeric IDs must be accepted directly — required in scratch
+	// containers, which have no /etc/passwd or /etc/group.
+	uid, err := resolveUID("65534")
+	if err != nil || uid != 65534 {
+		t.Errorf("resolveUID(\"65534\") = %d, %v; want 65534, nil", uid, err)
+	}
+	gid, err := resolveGID("65534")
+	if err != nil || gid != 65534 {
+		t.Errorf("resolveGID(\"65534\") = %d, %v; want 65534, nil", gid, err)
+	}
+	// The predefined defaults are numeric, so they resolve on any system,
+	// with or without a user/group database.
+	uid, err = resolveUID(strconv.Itoa(DefaultUID))
+	if err != nil || uid != DefaultUID {
+		t.Errorf("resolveUID(%d) = %d, %v; want %d, nil", DefaultUID, uid, err, DefaultUID)
+	}
+	gid, err = resolveGID(strconv.Itoa(DefaultGID))
+	if err != nil || gid != DefaultGID {
+		t.Errorf("resolveGID(%d) = %d, %v; want %d, nil", DefaultGID, gid, err, DefaultGID)
+	}
+	// A parseable but negative ID is rejected at the parse step — the user
+	// database lookup must only happen when parsing fails.
+	if _, err := resolveUID("-1"); err == nil || !strings.Contains(err.Error(), "must not be negative") {
+		t.Errorf("resolveUID(\"-1\") = _, %v; want a 'must not be negative' error", err)
+	}
+	if _, err := resolveGID("-1"); err == nil || !strings.Contains(err.Error(), "must not be negative") {
+		t.Errorf("resolveGID(\"-1\") = _, %v; want a 'must not be negative' error", err)
+	}
+}
+
+func TestResolveNamesViaDatabase(t *testing.T) {
+	// Names are resolved via the user/group database when one exists.
+	// "nobody"/"nogroup" exist on virtually all Linux systems; skip the
+	// assertion where the database lacks them (e.g. scratch containers).
+	if usr, err := user.Lookup("nobody"); err == nil {
+		want, _ := strconv.Atoi(usr.Uid)
+		if uid, err := resolveUID("nobody"); err != nil || uid != want {
+			t.Errorf("resolveUID(\"nobody\") = %d, %v; want %d, nil", uid, err, want)
+		}
+	} else {
+		t.Logf("no user database entry for nobody (%v): name resolution untestable here", err)
+	}
+	if grp, err := user.LookupGroup("nogroup"); err == nil {
+		want, _ := strconv.Atoi(grp.Gid)
+		if gid, err := resolveGID("nogroup"); err != nil || gid != want {
+			t.Errorf("resolveGID(\"nogroup\") = %d, %v; want %d, nil", gid, err, want)
+		}
+	} else {
+		t.Logf("no group database entry for nogroup (%v): name resolution untestable here", err)
+	}
+}
+
+func TestResolveUnknownNamesFail(t *testing.T) {
+	// Unknown names must stay an error — fail-closed: a typo in user/group
+	// must never silently drop to something else.
+	if _, err := resolveUID("definitely-not-a-user-xyz-123"); err == nil {
+		t.Error("resolveUID with unknown user should fail")
+	}
+	if _, err := resolveGID("definitely-not-a-group-xyz-123"); err == nil {
+		t.Error("resolveGID with unknown group should fail")
 	}
 }
 
@@ -150,6 +217,15 @@ func helperPrivDrop(t *testing.T) {
 		fmt.Fprintf(os.Stderr, "still root after DropPrivileges\n")
 		os.Exit(2)
 	}
+	// When the target was given as a numeric ID, verify it was reached.
+	if wantUID, err := strconv.Atoi(user); err == nil && os.Getuid() != wantUID {
+		fmt.Fprintf(os.Stderr, "uid = %d, want numeric target %d\n", os.Getuid(), wantUID)
+		os.Exit(5)
+	}
+	if wantGID, err := strconv.Atoi(group); err == nil && os.Getgid() != wantGID {
+		fmt.Fprintf(os.Stderr, "gid = %d, want numeric target %d\n", os.Getgid(), wantGID)
+		os.Exit(6)
+	}
 	// Supplementary groups must not include root (gid 0).
 	groups, err := syscall.Getgroups()
 	if err != nil {
@@ -178,6 +254,24 @@ func TestDropPrivilegesAsRoot(t *testing.T) {
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("privdrop helper failed: %v\n%s", err, out)
+	}
+}
+
+func TestDropPrivilegesAsRootNumericIDs(t *testing.T) {
+	if !IsRoot() {
+		t.Skip("privilege drop test requires root")
+	}
+	// Numeric IDs must work without a user/group database (scratch
+	// containers): drop to uid/gid 65534 by number, not by name.
+	cmd := exec.Command(os.Args[0], "-test.run=TestHelperProcess")
+	cmd.Env = append(os.Environ(),
+		"GO_RFTP_HELPER=privdrop",
+		"GO_RFTP_USER=65534",
+		"GO_RFTP_GROUP=65534",
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("privdrop (numeric IDs) helper failed: %v\n%s", err, out)
 	}
 }
 

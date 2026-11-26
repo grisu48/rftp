@@ -17,8 +17,11 @@ bandwidth_limit: 0          # Per-connection bandwidth limit in bytes/sec (0 = u
 
 # Security settings
 serve_dir: /srv/ftp         # The single directory to serve (chrooted into when run as root)
-user: nobody                # Optional: user to drop privileges to (default: nobody)
-group: nogroup              # Optional: group to drop privileges to (default: nogroup)
+user: "65534"               # Optional: user to drop privileges to — a name (e.g. "nobody",
+                            # resolved via the user database) or a numeric uid
+                            # (default: 65534, the conventional nobody ID)
+group: "65534"              # Optional: group to drop privileges to — a name (e.g. "nogroup")
+                            # or a numeric gid (default: 65534, the conventional nogroup ID)
 chroot: true                # Chroot into serve_dir (requires root; startup fails if it cannot be applied)
 read_only_mount: true       # Re-mount serve_dir read-only in a private mount namespace (requires root + CAP_SYS_ADMIN; startup fails if it cannot be applied; the rest of the system is unaffected)
 

@@ -6,15 +6,21 @@ package security
 import (
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/grisu48/rftp/cmd/rftp/logger"
 )
 
-// DefaultUser and DefaultGroup are the privilege drop targets used when
-// user/group are not configured (both configuration fields are optional).
+// DefaultUID and DefaultGID are the predefined privilege drop targets used
+// when user/group are not configured (both configuration fields are
+// optional): the conventional nobody/nogroup IDs, i.e. the Linux overflow
+// uid/gid 65534 — the same ID the container image runs as. They are numeric
+// on purpose, so the default works on any system, including ones without a
+// user/group database (e.g. a scratch container image with no /etc/passwd
+// or /etc/group).
 const (
-	DefaultUser  = "nobody"
-	DefaultGroup = "nogroup"
+	DefaultUID = 65534
+	DefaultGID = 65534
 )
 
 // Hardening configures the startup security hardening sequence.
@@ -99,14 +105,15 @@ func Apply(h Hardening) (string, error) {
 	}
 	// Privilege dropping is never skipped when running as root: if it fails,
 	// the program must exit rather than serve as root. The drop target is the
-	// configured user/group, or the default nobody/nogroup when not configured
-	// (user and group are both optional configuration fields).
+	// configured user/group (a name or numeric ID), or the predefined default
+	// uid/gid when not configured (user and group are both optional
+	// configuration fields).
 	user, group := h.User, h.Group
 	if user == "" {
-		user = DefaultUser
+		user = strconv.Itoa(DefaultUID)
 	}
 	if group == "" {
-		group = DefaultGroup
+		group = strconv.Itoa(DefaultGID)
 	}
 	if err := DropPrivileges(user, group); err != nil {
 		return "", fmt.Errorf("secure by default: privilege drop failed (fatal): %w", err)

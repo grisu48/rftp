@@ -98,6 +98,9 @@ type Config struct {
 	ServeDir string `yaml:"serve_dir"`
 
 	// User and Group are the privileges dropped to after binding/chroot.
+	// Each may be a name (e.g. "nobody", resolved via the user database) or
+	// a numeric ID (e.g. "65534"); when empty they default to the predefined
+	// DefaultUser/DefaultGroup.
 	User  string `yaml:"user"`
 	Group string `yaml:"group"`
 
@@ -110,6 +113,15 @@ type Config struct {
 	LogLevel string `yaml:"log_level"`
 }
 
+// DefaultUser and DefaultGroup are the privilege drop targets used when
+// user/group are not configured: the predefined numeric IDs 65534/65534
+// (the conventional nobody/nogroup IDs, i.e. the Linux overflow uid/gid).
+// Keep in sync with security.DefaultUID / security.DefaultGID.
+const (
+	DefaultUser  = "65534"
+	DefaultGroup = "65534"
+)
+
 // Default returns a Config populated with the default values.
 func Default() *Config {
 	return &Config{
@@ -118,8 +130,8 @@ func Default() *Config {
 		PassivePortMin: 40000,
 		PassivePortMax: 40100,
 		BandwidthLimit: 0, // unlimited
-		User:           "nobody",
-		Group:          "nogroup",
+		User:           DefaultUser,
+		Group:          DefaultGroup,
 		Chroot:         true,
 		ReadOnlyMount:  true,
 		LogLevel:       "info",
@@ -289,13 +301,13 @@ func (c *Config) Validate() error {
 	_ = f.Close()
 
 	// user/group are optional: when unset (or explicitly empty) they fall
-	// back to the unprivileged defaults (keep in sync with
-	// security.DefaultUser / security.DefaultGroup).
+	// back to the predefined unprivileged uid/gid defaults (keep in sync
+	// with security.DefaultUID / security.DefaultGID).
 	if c.User == "" {
-		c.User = "nobody"
+		c.User = DefaultUser
 	}
 	if c.Group == "" {
-		c.Group = "nogroup"
+		c.Group = DefaultGroup
 	}
 
 	switch c.LogLevel {

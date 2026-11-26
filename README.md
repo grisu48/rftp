@@ -107,8 +107,10 @@ bandwidth_limit: 0          # per-connection limit in bytes/sec (0 = unlimited);
                             # human-readable values work too: "512KiB/s", "10MB/s"
 
 serve_dir: /srv/ftp         # directory to serve (chrooted when root)
-user: nobody                # optional: privilege drop target (default: nobody)
-group: nogroup              # optional: privilege drop target (default: nogroup)
+user: "65534"               # optional: privilege drop target — a name or numeric uid
+                            # (default: uid 65534, the conventional nobody ID)
+group: "65534"              # optional: privilege drop target — a name or numeric gid
+                            # (default: gid 65534, the conventional nogroup ID)
 chroot: true
 read_only_mount: true
 
@@ -116,9 +118,13 @@ log_level: info             # debug, info, warn, error
 ```
 
 Only `listen_addr` and `serve_dir` are required. `user` and `group` are
-**optional**: when omitted (or empty) they default to `nobody`/`nogroup`. The
-server still never serves as root — when started as root it always drops
-privileges (to the configured or default target) or exits.
+**optional**: when omitted (or empty) they default to the predefined numeric
+IDs `65534`/`65534` (the conventional nobody/nogroup IDs), so the default
+works on any system — including ones without a user/group database (e.g. a
+scratch container image with no `/etc/passwd` or `/etc/group`). A configured
+name (e.g. `user: nobody`) is resolved via the user database. The server
+still never serves as root — when started as root it always drops privileges
+(to the configured or default target) or exits.
 
 Every key can also be set via an environment variable named `RFTP_` +
 uppercased key, e.g. `listen_addr` → `RFTP_LISTEN_ADDR`,
@@ -238,6 +244,11 @@ Then connect with any anonymous FTP client, e.g. `ftp localhost 2121` or
 The image runs unprivileged in a scratch container: `chroot` and
 `read_only_mount` are disabled in the default configuration because they
 require root. The server is still read-only and rejects all write commands.
+You can also start it as root (`podman run --user 0:0 ...`): the server then
+drops privileges to the default uid/gid 65534/65534 (numeric, so no
+`/etc/passwd` or `/etc/group` is needed in the scratch image), or to the
+configured `user`/`group` — a name is resolved via the user database, a
+number is used directly.
 
 ## Testing
 

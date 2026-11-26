@@ -52,8 +52,10 @@ passive_port_max: 40100
 
 # Security settings
 serve_dir: /srv/ftp         # Directory to serve (will be chrooted)
-user: nobody                # Optional: user to drop privileges to (default: nobody)
-group: nogroup              # Optional: group to drop privileges to (default: nogroup)
+user: "65534"               # Optional: user to drop privileges to — a name or numeric uid
+                            # (default: 65534, the conventional nobody ID)
+group: "65534"              # Optional: group to drop privileges to — a name or numeric gid
+                            # (default: 65534, the conventional nogroup ID)
 chroot: true                # Chroot into serve_dir (requires root)
 read_only_mount: true       # Re-mount serve_dir read-only in a private mount namespace (requires root)
 
@@ -62,9 +64,13 @@ log_level: info             # debug, info, warn, error
 ```
 
 Only `listen_addr` and `serve_dir` are required. `user` and `group` are
-**optional**: when omitted (or set to an empty value) they default to
-`nobody`/`nogroup`, which is the privilege drop target used when the server
-runs as root.
+**optional**: when omitted (or set to an empty value) they default to the
+predefined numeric IDs `65534`/`65534` (the conventional nobody/nogroup IDs),
+which is the privilege drop target used when the server runs as root. The
+configured values may be names (e.g. `nobody`, resolved via the user/group
+database) or numeric IDs (e.g. `user: "65534"`, used directly); the numeric
+default works on any system, including ones without a user/group database
+(e.g. a scratch container image with no `/etc/passwd`/`/etc/group`).
 
 ### Decision: Privilege dropping and chroot sequence
 **What**: When running as root, perform security hardening in this order:
@@ -99,7 +105,7 @@ never continues serving in a degraded security posture (see *Secure by default*)
 **What**: The server MUST apply every configured security measure or fail:
 - `chroot: true` (default): chroot into `serve_dir` (applied process-wide via the startup re-exec); if chroot fails, **exit with non-zero status**
 - `read_only_mount: true` (default): re-mount `serve_dir` read-only inside a private mount namespace (applied via the startup re-exec, so the host is unaffected); if entering the namespace or the re-mount fails, **exit with non-zero status**
-- Privilege dropping: when the server starts as root it MUST drop privileges before serving — to the configured `user`/`group`, or to the default `nobody`/`nogroup` when they are not configured (`user` and `group` are both optional); if the drop fails, **exit with non-zero status**
+- Privilege dropping: when the server starts as root it MUST drop privileges before serving — to the configured `user`/`group` (a name, resolved via the user/group database, or a numeric ID), or to the predefined default uid/gid 65534/65534 when they are not configured (`user` and `group` are both optional); if the drop fails, **exit with non-zero status**
 - Starting as non-root while `chroot: true` or `read_only_mount: true` is configured: the measure cannot be applied, so the server **refuses to start** (exit non-zero). The operator must either start as root or explicitly set the measure to `false`.
 - Starting as non-root with `chroot: false` and `read_only_mount: false`: the process is already unprivileged, so there are no root privileges to drop — the privilege-drop goal is satisfied. The server logs this explicitly (it is not a silent skip) and continues.
 

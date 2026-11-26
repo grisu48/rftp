@@ -13,4 +13,6 @@ read_only_mount: false      # requires root + CAP_SYS_ADMIN (private mount names
 passive_enabled: false      # passive mode (PASV/EPSV) disabled by default
 bandwidth_limit: 0          # per-connection bandwidth limit in bytes/sec (0 = unlimited); e.g. "512KiB/s", "10MB/s"
 log_level: info             # debug, info, warn, error
-# user/group are optional (default: nobody/nogroup); unused when unprivileged
+# user/group are optional (default: the numeric IDs 65534/65534, so no
+# /etc/passwd or /etc/group is needed in this scratch image; a configured name
+# is resolved via the user database); unused when unprivileged

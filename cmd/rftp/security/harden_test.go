@@ -7,9 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"os/user"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 )
@@ -135,12 +133,12 @@ func TestApplyAsRootHardeningSucceeds(t *testing.T) {
 	}
 }
 
-func TestApplyAsRootDefaultsToNobody(t *testing.T) {
+func TestApplyAsRootDefaultsToPredefinedIDs(t *testing.T) {
 	if !IsRoot() {
 		t.Skip("default privilege drop target test requires root")
 	}
 	// With no user/group configured (both optional), a root start must drop
-	// to the default nobody/nogroup — never serve as root.
+	// to the predefined default uid/gid 65534/65534 — never serve as root.
 	cmd := exec.Command(os.Args[0], "-test.run=TestHelperProcess")
 	cmd.Env = append(os.Environ(), "GO_RFTP_HELPER=harden-defaults")
 	out, err := cmd.CombinedOutput()
@@ -200,7 +198,8 @@ func helperHardenOK(t *testing.T) {
 }
 
 // helperHardenDefaults applies hardening with an empty (unconfigured)
-// user/group and verifies the process dropped to the default nobody/nogroup.
+// user/group and verifies the process dropped to the predefined default
+// uid/gid (65534/65534) — numeric, so no user/group database is needed.
 func helperHardenDefaults(t *testing.T) {
 	if _, err := Apply(Hardening{ServeDir: t.TempDir()}); err != nil {
 		fmt.Fprintf(os.Stderr, "Apply: %v\n", err)
@@ -210,32 +209,12 @@ func helperHardenDefaults(t *testing.T) {
 		fmt.Fprintf(os.Stderr, "still root after Apply (privilege drop skipped!)\n")
 		os.Exit(2)
 	}
-	u, err := user.Lookup(DefaultUser)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "lookup default user %s: %v\n", DefaultUser, err)
-		os.Exit(3)
-	}
-	wantUID, err := strconv.Atoi(u.Uid)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "parse uid: %v\n", err)
-		os.Exit(3)
-	}
-	if os.Getuid() != wantUID {
-		fmt.Fprintf(os.Stderr, "uid = %d, want %d (default user %s)\n", os.Getuid(), wantUID, DefaultUser)
+	if os.Getuid() != DefaultUID {
+		fmt.Fprintf(os.Stderr, "uid = %d, want %d (default uid)\n", os.Getuid(), DefaultUID)
 		os.Exit(4)
 	}
-	g, err := user.LookupGroup(DefaultGroup)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "lookup default group %s: %v\n", DefaultGroup, err)
-		os.Exit(3)
-	}
-	wantGID, err := strconv.Atoi(g.Gid)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "parse gid: %v\n", err)
-		os.Exit(3)
-	}
-	if os.Getgid() != wantGID {
-		fmt.Fprintf(os.Stderr, "gid = %d, want %d (default group %s)\n", os.Getgid(), wantGID, DefaultGroup)
+	if os.Getgid() != DefaultGID {
+		fmt.Fprintf(os.Stderr, "gid = %d, want %d (default gid)\n", os.Getgid(), DefaultGID)
 		os.Exit(5)
 	}
 	os.Exit(0)
