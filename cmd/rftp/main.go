@@ -18,6 +18,8 @@ import (
 	"github.com/grisu48/rftp/cmd/rftp/server"
 )
 
+const VERSION = "1.0"
+
 func main() {
 	configPath := flag.String("config", "config.yaml", "path to the YAML configuration file")
 	flag.Parse()
@@ -70,7 +72,7 @@ func run(configPath string) error {
 		}
 	}
 
-	// 2. Bind the listener (requires root for ports < 1024).
+	// 2. Bind the listener.
 	srv, err := server.New(cfg)
 	if err != nil {
 		return fmt.Errorf("cannot listen on %s: %w", cfg.ListenAddr, err)
@@ -78,8 +80,6 @@ func run(configPath string) error {
 
 	// 3. Security hardening: drop privileges (the chroot and read-only
 	// re-mount were applied process-wide by the startup re-exec).
-	// Secure by default — every configured measure must be applied or the
-	// program fails.
 	serveDir, err := security.Apply(hardening)
 	if err != nil {
 		return err
@@ -95,8 +95,8 @@ func run(configPath string) error {
 		srv.Close()
 	}()
 
-	logger.Info("starting anonymous read-only FTP server version=1.0 passive_enabled=%t",
-		cfg.PassiveEnabled)
+	logger.Info("starting ftp server version %s passive_enabled=%t",
+		VERSION, cfg.PassiveEnabled)
 
 	// 5. Serve until shutdown.
 	if err := srv.Serve(); err != nil {
