@@ -34,13 +34,13 @@ Building a minimal, secure FTP server in Go that serves a single directory anony
 **Alternatives considered**:
 - Using an existing FTP library (e.g., `github.com/jlaffaye/ftp`) — rejected due to dependency and potential unwanted features
 
-### Decision: Single YAML configuration file
-**What**: All configuration via a single YAML file passed as command-line argument
+### Decision: YAML configuration file and/or environment variables
+**What**: Configuration is read from a single YAML file passed via the `-config` command-line argument and from environment variables. Each config key maps to an environment variable `RFTP_<UPPERCASED_KEY>` (e.g. `listen_addr` → `RFTP_LISTEN_ADDR`), parsed with the same rules as the YAML field. `-config` is optional when all required values are provided via environment variables. **The config file takes precedence over environment variables** on a per-key basis: keys present in both use the file value; env vars only fill keys absent from the file.
 
 **Why**:
-- Simple deployment model
-- Easy to audit configuration
-- No environment variable sprawl
+- Simple deployment model and easy to audit configuration (the file remains the single source of truth)
+- Container-friendly deployment where configuration is injected via environment variables
+- A single `RFTP_` prefix avoids environment variable sprawl
 
 **Configuration structure**:
 ```yaml

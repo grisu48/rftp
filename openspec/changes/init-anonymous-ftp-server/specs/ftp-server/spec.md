@@ -217,12 +217,37 @@ The server MUST accept a single YAML configuration file as a command-line argume
 - **THEN** the server logs an error and exits with non-zero status
 
 #### Scenario: Missing required config
-- **WHEN** required config fields (`listen_addr`, `serve_dir`) are missing
+- **WHEN** required config fields (`listen_addr`, `serve_dir`) are missing from all configuration sources (config file and environment variables)
 - **THEN** the server logs an error indicating which fields are missing and exits
 
 #### Scenario: Optional user/group omitted
 - **WHEN** `user` and `group` are omitted (or explicitly set to an empty value) in the config file
 - **THEN** the server accepts the configuration and uses the defaults `nobody`/`nogroup` as the privilege drop target
+
+---
+
+### Requirement: Configuration via environment variables, config file takes precedence
+The server SHALL accept configuration from environment variables in addition to the YAML configuration file. Each configuration key maps to an environment variable named `RFTP_` followed by the uppercased key (e.g. `listen_addr` → `RFTP_LISTEN_ADDR`, `bandwidth_limit` → `RFTP_BANDWIDTH_LIMIT`), parsed with the same rules and accepting the same values as the corresponding config file field. The `-config` flag SHALL be optional: when omitted, configuration is taken from environment variables alone. The config file SHALL take precedence over environment variables on a per-key basis: for any key set in both, the config file value SHALL be used, and environment variables SHALL only supply values for keys not present in the config file. Invalid environment variable values SHALL be rejected at startup with a non-zero exit status, exactly like invalid config file values.
+
+#### Scenario: Configuration from environment variables only
+- **WHEN** the server is started without `-config` and the required fields are provided via environment variables (e.g. `RFTP_LISTEN_ADDR=:21`, `RFTP_SERVE_DIR=/srv/ftp`)
+- **THEN** the server starts using the environment-provided configuration
+
+#### Scenario: Config file takes precedence over environment variables
+- **WHEN** a key is set both in the config file and as an environment variable (e.g. `passive_enabled: true` in the file and `RFTP_PASSIVE_ENABLED=false` in the environment)
+- **THEN** the config file value (`true`) is used and the environment variable is ignored for that key
+
+#### Scenario: Environment variables complement the config file
+- **WHEN** the server is started with `-config` and environment variables are set for keys that are not present in the config file
+- **THEN** those keys take their values from the environment variables
+
+#### Scenario: Invalid environment variable value rejected
+- **WHEN** an `RFTP_*` environment variable holds a value that is invalid for its key (e.g. `RFTP_BANDWIDTH_LIMIT=fast`)
+- **THEN** the server logs an error and exits with non-zero status
+
+#### Scenario: Required fields missing from all sources
+- **WHEN** `listen_addr` and `serve_dir` are provided neither in the config file nor via environment variables
+- **THEN** the server logs an error indicating which fields are missing and exits with non-zero status
 
 ---
 

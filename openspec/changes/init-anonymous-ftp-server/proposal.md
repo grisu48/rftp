@@ -13,6 +13,7 @@ Existing FTP servers (vsftpd, ProFTPD, Pure-FTPd) are feature-rich but complex. 
 ## What Changes
 - **NEW**: Complete FTP server implementation in Go
 - **NEW**: YAML configuration file support
+- **NEW**: Environment variable configuration (`RFTP_*`); config file takes precedence over environment variables
 - **NEW**: Security hardening (chroot, read-only mount, privilege drop)
 - **NEW**: Dual-stack IPv4/IPv6 listener
 - **NEW**: Active and passive mode support (passive disabled by default)
