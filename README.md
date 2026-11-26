@@ -154,6 +154,34 @@ variables, since the config file may lie outside the chroot.)
 - `SIGTERM`/`SIGINT` trigger a graceful shutdown: the listener is closed and all
   active connections are closed before exiting with status 0.
 
+#### Environment variables
+
+Every configuration key can be set via an environment variable named `RFTP_`
++ the uppercased key. Values are parsed with the same rules as the YAML fields
+(e.g. `RFTP_PASSIVE_ENABLED=true`, `RFTP_BANDWIDTH_LIMIT=10MiB/s`). The config
+file takes precedence over environment variables on a per-key basis; unknown
+`RFTP_*` variables (e.g. the internal `RFTP_REEXEC` startup guard) are ignored.
+
+| Environment variable   | Config key        | Default            | Description                                                                                              |
+|------------------------|-------------------|--------------------|----------------------------------------------------------------------------------------------------------|
+| `RFTP_LISTEN_ADDR`     | `listen_addr`     | `":21"`            | Control listen address; a wildcard address gives dual-stack IPv4/IPv6. Required.                        |
+| `RFTP_PASSIVE_ENABLED` | `passive_enabled` | `true`             | Enable passive mode (`PASV`/`EPSV`); set `false` to reject them with `502`.                             |
+| `RFTP_PASSIVE_PORT_MIN`| `passive_port_min`| `40000`            | First port of the passive port range (1–65535, ≤ `passive_port_max`; used when passive mode is enabled). |
+| `RFTP_PASSIVE_PORT_MAX`| `passive_port_max`| `40100`            | Last port of the passive port range (1–65535).                                                           |
+| `RFTP_BANDWIDTH_LIMIT` | `bandwidth_limit` | `0` (unlimited)    | Per-connection bandwidth cap in bytes/sec: a bare number or a human-readable value (`512KiB/s`, `10MB/s`). |
+| `RFTP_SERVE_DIR`       | `serve_dir`       | — (required)       | The single directory to serve (chrooted into when run as root).                                         |
+| `RFTP_USER`            | `user`            | `"65534"`          | Privilege drop target: a name (resolved via the user database) or a numeric uid.                         |
+| `RFTP_GROUP`           | `group`           | `"65534"`          | Privilege drop target: a name (resolved via the group database) or a numeric gid.                       |
+| `RFTP_CHROOT`          | `chroot`          | `true`             | Chroot into `serve_dir` (requires root; startup fails if it cannot be applied).                         |
+| `RFTP_READ_ONLY_MOUNT` | `read_only_mount` | `true`             | Re-mount `serve_dir` read-only in a private mount namespace (requires root + `CAP_SYS_ADMIN`).          |
+| `RFTP_LOG_LEVEL`       | `log_level`       | `"info"`           | Log level: `debug`, `info`, `warn` or `error`.                                                           |
+
+Example — run without a config file, using only environment variables:
+
+```sh
+RFTP_LISTEN_ADDR=":2121" RFTP_SERVE_DIR=/srv/ftp RFTP_CHROOT=false RFTP_READ_ONLY_MOUNT=false ./rftp
+```
+
 ## Security model
 
 1. Startup re-exec (when root, with `chroot` or `read_only_mount` enabled): the
