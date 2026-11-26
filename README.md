@@ -275,6 +275,29 @@ Then connect with any anonymous FTP client, e.g. `ftp localhost 2121` or
   publish the passive port range (`passive_port_min`–`passive_port_max`),
   e.g. `-p 40000-40100:40000-40100`. Set `passive_enabled: false` in your
   configuration to disable it.
+- **Seccomp**: tight seccomp profiles are shipped in `container/`:
+  `seccomp.json` for the default unprivileged container, and
+  `seccomp-root.json` when starting as root (`--user 0:0`, see below) with
+  `chroot`/`read_only_mount` enabled — the root variant additionally allows
+  only the startup hardening calls (`unshare(CLONE_NEWNS)`, bind/read-only
+  re-`mount`, `chroot`/`chdir`, `execveat(AT_EMPTY_PATH)`, and
+  `setgroups`/`setgid`/`setuid` — never to uid/gid 0). Both allow only what
+  the server actually needs (verified by tracing the binary): read-only file
+  access under `/ftp`, TCP sockets (IPv4/IPv6 `SOCK_STREAM` only), the Go
+  runtime baseline — and block namespace creation, privileged `prctl`
+  options, write-mode `openat`, raw/datagram/unix sockets, and everything
+  else with `EPERM`. Apply with:
+
+  ```sh
+  podman run -d --name rftp \
+    --security-opt seccomp=container/seccomp.json \
+    -p 2121:2121/tcp -p 40000-40100:40000-40100/tcp \
+    -v /srv/ftp:/ftp:ro -v /etc/rftp:/conf:ro \
+    rftp
+  ```
+
+  For a root start (`--user 0:0 --cap-add SYS_ADMIN` so `read_only_mount`
+  works), use `--security-opt seccomp=container/seccomp-root.json` instead.
 
 The image runs unprivileged in a scratch container: `chroot` and
 `read_only_mount` are disabled in the default configuration because they
