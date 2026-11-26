@@ -53,11 +53,6 @@ func run(configPath string) error {
 
 	// 1. Startup isolation re-exec: enter a private mount namespace and/or
 	// chroot before binding, so those measures apply to the whole process.
-	// unshare(2)/chroot(2) are per-thread, so they must happen before the
-	// exec, not in Apply. The read-only re-mount is done inside the private
-	// namespace, leaving the rest of the system unaffected. The config is
-	// passed to the new image via the environment. Reexec never returns on
-	// success; on failure the program exits (fail-closed).
 	if security.NeedsReexec(hardening) {
 		inline := *cfg
 		if cfg.Chroot {
