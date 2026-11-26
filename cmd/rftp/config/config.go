@@ -14,15 +14,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Bandwidth is a bandwidth limit in bytes per second. The zero value means
-// unlimited. In the YAML configuration it may be given as a bare number of
-// bytes per second or as a human-readable string such as "512KiB/s" or
-// "10MB/s" (units B/KB/MB/GB/TB are decimal, KiB/MiB/GiB/TiB are binary,
-// case-insensitive, with an optional "/s" suffix).
+// Bandwidth limit in bytes per second. Zero means unlimited.
 type Bandwidth int64
 
-// MarshalYAML serializes the limit as a plain number of bytes per second,
-// so Encode/Parse round-trips losslessly through the re-exec environment.
+// MarshalYAML serializes the limit as a plain number of bytes per second.
 func (b Bandwidth) MarshalYAML() (any, error) {
 	return int64(b), nil
 }
@@ -60,7 +55,7 @@ var bandwidthUnits = map[string]float64{
 // units and overflow are rejected.
 func ParseBandwidth(s string) (int64, error) {
 	orig := s
-	s = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(s), " ", ""))
+	s = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(s), " ", "")) // Note: TrimSpace trims all whitespaces
 	s = strings.TrimSuffix(s, "/s")
 	if s == "" || s == "0" {
 		return 0, nil
@@ -92,7 +87,7 @@ type Config struct {
 	// (e.g. ":21" or "::"). A wildcard address gives dual-stack IPv4/IPv6.
 	ListenAddr string `yaml:"listen_addr"`
 
-	// PassiveEnabled controls whether PASV/EPSV are accepted.
+	// PassiveEnabled controls if FTP passive mode is enabled
 	PassiveEnabled bool `yaml:"passive_enabled"`
 	// PassivePortMin and PassivePortMax define the passive port range.
 	PassivePortMin int `yaml:"passive_port_min"`
@@ -103,8 +98,7 @@ type Config struct {
 	// means unlimited.
 	BandwidthLimit Bandwidth `yaml:"bandwidth_limit"`
 
-	// ServeDir is the single directory that is served (and chrooted into
-	// when running as root).
+	// ServeDir is the single directory that is served.
 	ServeDir string `yaml:"serve_dir"`
 
 	// User and Group are the privileges dropped to after binding/chroot.
