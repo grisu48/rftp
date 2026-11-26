@@ -248,7 +248,8 @@ Build and run with Podman (or Docker with `docker build -f Containerfile`):
 ```sh
 podman build -t rftp .
 podman run -d --name rftp \
-  -p 2121:2121 \
+  -p 2121:2121/tcp \
+  -p 40000-40100:40000-40100/tcp \
   -v /srv/ftp:/ftp:ro \
   -v /etc/rftp:/conf:ro \
   rftp
