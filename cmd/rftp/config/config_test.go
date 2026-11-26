@@ -67,8 +67,8 @@ func TestLoadAppliesDefaults(t *testing.T) {
 	if cfg.ListenAddr != ":21" {
 		t.Errorf("default ListenAddr = %q, want :21", cfg.ListenAddr)
 	}
-	if cfg.PassiveEnabled {
-		t.Error("passive mode should be disabled by default")
+	if !cfg.PassiveEnabled {
+		t.Error("passive mode should be enabled by default")
 	}
 	if cfg.PassivePortMin != 40000 || cfg.PassivePortMax != 40100 {
 		t.Errorf("default passive ports = %d-%d", cfg.PassivePortMin, cfg.PassivePortMax)

@@ -46,7 +46,7 @@ Building a minimal, secure FTP server in Go that serves a single directory anony
 ```yaml
 # Server settings
 listen_addr: ":21"          # Listen address (dual-stack by default)
-passive_enabled: false      # Passive mode disabled by default
+passive_enabled: true       # Passive mode enabled by default (set false to disable)
 passive_port_min: 40000     # Passive port range (if enabled)
 passive_port_max: 40100
 
@@ -157,13 +157,13 @@ unavailable (e.g. the classic `ftp` client over IPv6 skips `EPRT` after
 - Single socket handles both protocols
 - Use `EPSV`/`EPRT` for IPv6 passive/active mode
 
-### Decision: Passive mode disabled by default
-**What**: Passive mode (`PASV`/`EPSV`) is disabled unless explicitly enabled in config
+### Decision: Passive mode enabled by default
+**What**: Passive mode (`PASV`/`EPSV`) is enabled unless explicitly disabled in config (`passive_enabled: false`)
 
 **Why**:
-- Passive mode requires opening additional ports (firewall complexity)
-- Many deployments use active mode or have firewall rules for passive ranges
-- Security principle: minimize open ports by default
+- Most modern clients default to passive mode (NAT/firewall-friendly); active mode often does not work through NAT
+- Passive mode only opens ports on demand (one per data connection, from the configured `passive_port_min`–`passive_port_max` range), so the listening surface stays minimal
+- Operators who want active mode only can disable passive mode explicitly via `passive_enabled: false`
 
 ### Decision: Logging to stdout/stderr only
 **What**: All logging goes to stdout (info/debug) and stderr (warnings/errors)

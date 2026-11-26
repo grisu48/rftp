@@ -224,7 +224,7 @@ func TestWriteCommandsRejectedPreLogin(t *testing.T) {
 // rejected with 550, recognized-but-unimplemented and TLS commands with 502,
 // and a completely unknown command with 500.
 func TestCommandSurfaceClassification(t *testing.T) {
-	_, addr := startTestServer(t, nil) // passive mode disabled by default
+	_, addr := startTestServer(t, disablePassive) // passive mode disabled for this test
 	c := dialTestClient(t, addr)
 	c.login()
 
@@ -251,7 +251,7 @@ func TestCommandSurfaceClassification(t *testing.T) {
 		ftp.CmdLongPassive, ftp.CmdStatus, ftp.CmdAbort, ftp.CmdAllocate + " 100",
 		ftp.CmdAccount + " x", ftp.CmdStructureMount + " /", ftp.CmdReinitialize,
 		ftp.CmdMlsd, ftp.CmdMlst + " hello.txt", ftp.CmdRestart + " 0",
-		ftp.CmdPassive, ftp.CmdExtendedPassive, // passive mode disabled in the test config
+		ftp.CmdPassive, ftp.CmdExtendedPassive, // passive mode disabled in this test
 		ftp.CmdAuth + " TLS", ftp.CmdProtection + " P", ftp.CmdProtectionBufferSize + " 0",
 	}
 	for _, cmd := range notImplemented {

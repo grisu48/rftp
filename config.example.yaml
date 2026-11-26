@@ -9,7 +9,7 @@
 
 # Server settings
 listen_addr: ":21"          # Listen address; a wildcard address gives dual-stack IPv4/IPv6
-passive_enabled: false      # Passive mode (PASV/EPSV) is disabled by default
+passive_enabled: true       # Passive mode (PASV/EPSV) is enabled by default; set false to disable
 passive_port_min: 40000     # Passive port range (only used when passive_enabled: true)
 passive_port_max: 40100
 bandwidth_limit: 0          # Per-connection bandwidth limit in bytes/sec (0 = unlimited, default);

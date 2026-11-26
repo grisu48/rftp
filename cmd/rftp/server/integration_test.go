@@ -178,10 +178,10 @@ func TestSystFeatHelp(t *testing.T) {
 }
 
 // TestFeatPassiveDisabled verifies that FEAT does NOT advertise EPSV/PASV
-// when passive mode is disabled (the default), so clients do not attempt
+// when passive mode is disabled, so clients do not attempt
 // passive connections that would be rejected with 502.
 func TestFeatPassiveDisabled(t *testing.T) {
-	_, addr := startTestServer(t, nil) // default: passive disabled
+	_, addr := startTestServer(t, disablePassive)
 	c := dialTestClient(t, addr)
 	c.login()
 
@@ -838,8 +838,34 @@ func enablePassive(cfg *config.Config) {
 	cfg.PassivePortMax = base + 20
 }
 
-func TestPassiveModeDisabledByDefault(t *testing.T) {
+// disablePassive explicitly disables passive mode (it is enabled by default).
+func disablePassive(cfg *config.Config) {
+	cfg.PassiveEnabled = false
+}
+
+func TestPassiveModeEnabledByDefault(t *testing.T) {
+	// Passive mode is enabled by default: PASV/EPSV work out of the box.
 	_, addr := startTestServer(t, nil)
+	c := dialTestClient(t, addr)
+	c.login()
+
+	c.cmd("PASV")
+	c.expect(227, "Entering Passive Mode (")
+	c.cmd("EPSV")
+	c.expect(229, "Entering Extended Passive Mode (")
+
+	c.cmd("FEAT")
+	lines := c.expect(211)
+	joined := strings.Join(lines, "\n")
+	for _, feat := range []string{"EPSV", "PASV"} {
+		if !strings.Contains(joined, feat) {
+			t.Errorf("FEAT reply missing %q with default config: %v", feat, lines)
+		}
+	}
+}
+
+func TestPassiveModeDisabled(t *testing.T) {
+	_, addr := startTestServer(t, disablePassive)
 	c := dialTestClient(t, addr)
 	c.login()
 
@@ -1151,9 +1177,9 @@ func TestRecognizedButUnimplementedCommandsGet502(t *testing.T) {
 
 func TestClientFallbackChainPassiveRefused(t *testing.T) {
 	// Regression test for the classic ftp client against a server with
-	// passive mode disabled (the default): EPSV -> PASV -> LPSV must all
+	// passive mode disabled: EPSV -> PASV -> LPSV must all
 	// get clean 502 replies, and the active fallback (PORT) must then work.
-	_, addr := startTestServer(t, nil)
+	_, addr := startTestServer(t, disablePassive)
 	c := dialTestClient(t, addr)
 	c.login()
 
@@ -1178,7 +1204,7 @@ func TestClientFallbackChainPassiveRefused(t *testing.T) {
 func TestClientFallbackChainViaLprt(t *testing.T) {
 	// tnftp over IPv6: EPSV -> LPSV -> LPRT. With passive disabled the
 	// passive attempts get 502 and LPRT must complete the transfer.
-	_, addr := startTestServerOn(t, "[::1]:0", nil)
+	_, addr := startTestServerOn(t, "[::1]:0", disablePassive)
 	c := dialTestClient(t, addr)
 	c.login()
 
@@ -1208,12 +1234,12 @@ func TestClientFallbackChainViaLprt(t *testing.T) {
 // --- Passive-disabled full workflow (acceptance test) --------------------------
 //
 // This test verifies that the server is fully functional with passive mode
-// disabled (the default): a client using only active mode (PORT) can list
+// disabled: a client using only active mode (PORT) can list
 // directories, stat files and retrieve files. It also verifies that passive
 // commands are rejected and not advertised in FEAT.
 
 func TestPassiveDisabledFullWorkflow(t *testing.T) {
-	srv, addr := startTestServer(t, nil) // default: passive disabled
+	srv, addr := startTestServer(t, disablePassive)
 	c := dialTestClient(t, addr)
 	c.login()
 

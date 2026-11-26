@@ -52,7 +52,7 @@ file takes precedence over environment variables per key. Only `listen_addr`
 and `serve_dir` are required. `user`/`group` are optional and default to the
 predefined numeric IDs `65534`/`65534`; a configured value may be a name
 (e.g. `nobody`, resolved via the user database) or a numeric ID. Passive mode
-is disabled by default (`passive_enabled: false`).
+is enabled by default (`passive_enabled: true`); set it to `false` to disable.
 
 ## Security model — non-negotiable
 

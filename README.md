@@ -33,7 +33,7 @@ system is unaffected), and dropping root privileges.
   are only accepted from the control connection's peer.
 - **Dual-stack** — listens on both IPv4 and IPv6 via a single dual-stack socket.
 - **Active and passive mode** — `PORT`/`EPRT`/`LPRT` (active) always supported;
-  `PASV`/`EPSV` (passive) disabled by default, enable via configuration.
+  `PASV`/`EPSV` (passive) enabled by default, disable via configuration.
  - **Per-connection bandwidth limit** — optional `bandwidth_limit` (e.g.
    `10MiB/s` or `512KiB/s`; `0` = unlimited, the default) caps each connection
    (control and data) individually via a token bucket.
@@ -42,8 +42,8 @@ system is unaffected), and dropping root privileges.
   implemented` (not `500`), so standard clients such as the classic `ftp`
   client fall back to supported commands (`PASV`/`PORT`/`EPRT`/`LPRT`)
   instead of failing. Clients that *only* support passive mode (e.g. GNU
-  `inetutils` ftp with `passive` enabled) need `passive_enabled: true` on
-  the server, since passive mode is disabled by default.
+  `inetutils` ftp with `passive` enabled) work out of the box, since passive
+  mode is enabled by default; set `passive_enabled: false` to disable it.
 - **Security hardening** — when started as root: startup re-exec into a private
   mount namespace + chroot + read-only re-mount (scoped to the server process
   only) → bind → drop privileges to a non-privileged user. Any failure is
@@ -59,7 +59,7 @@ system is unaffected), and dropping root privileges.
 | Navigation   | `PWD`, `CWD`, `CDUP`, `TYPE`, `MODE`, `STRU`                     |
 | Information  | `SYST`, `FEAT`, `HELP`, `SIZE`, `MDTM`, `OPTS UTF8 ON`           |
 | Transfers    | `LIST`, `NLST`, `RETR`                                           |
-| Data setup   | `PORT`, `EPRT`, `LPRT`, `PASV`, `EPSV` (passive only when enabled) |
+| Data setup   | `PORT`, `EPRT`, `LPRT`, `PASV`, `EPSV` (passive can be disabled)   |
 
 ## Project layout
 
@@ -104,7 +104,7 @@ Configuration comes from a YAML file passed via `-config` and/or from
 
 ```yaml
 listen_addr: ":21"          # dual-stack IPv4/IPv6
-passive_enabled: false      # PASV/EPSV disabled by default
+passive_enabled: true       # PASV/EPSV enabled by default (set false to disable)
 passive_port_min: 40000
 passive_port_max: 40100
 bandwidth_limit: 0          # per-connection limit in bytes/sec (0 = unlimited);
@@ -242,9 +242,10 @@ Then connect with any anonymous FTP client, e.g. `ftp localhost 2121` or
   with `-p 2121:2121`, or any host port you prefer, e.g. `-p 21:2121`.
 - **Permissions**: the container runs as uid/gid `65534` (nobody). Files under
   `/ftp` must be readable by that uid (world-readable works).
-- **Passive mode**: disabled by default. To enable it, set `passive_enabled:
-  true` in your configuration and publish the passive port range
-  (`passive_port_min`–`passive_port_max`), e.g. `-p 40000-40100:40000-40100`.
+- **Passive mode**: enabled by default. To use it through published ports,
+  publish the passive port range (`passive_port_min`–`passive_port_max`),
+  e.g. `-p 40000-40100:40000-40100`. Set `passive_enabled: false` in your
+  configuration to disable it.
 
 The image runs unprivileged in a scratch container: `chroot` and
 `read_only_mount` are disabled in the default configuration because they

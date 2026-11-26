@@ -16,7 +16,7 @@ Existing FTP servers (vsftpd, ProFTPD, Pure-FTPd) are feature-rich but complex. 
 - **NEW**: Environment variable configuration (`RFTP_*`); config file takes precedence over environment variables
 - **NEW**: Security hardening (chroot, read-only mount, privilege drop)
 - **NEW**: Dual-stack IPv4/IPv6 listener
-- **NEW**: Active and passive mode support (passive disabled by default)
+- **NEW**: Active and passive mode support (passive enabled by default)
 - **NEW**: Read-only command set (USER, PASS, SYST, PWD, CWD, CDUP, TYPE, MODE, STRU, NOOP, QUIT, PASV, PORT, EPSV, EPRT, LPRT, LIST, NLST, RETR, SIZE, MDTM, FEAT, OPTS, HELP)
 
 ## Impact

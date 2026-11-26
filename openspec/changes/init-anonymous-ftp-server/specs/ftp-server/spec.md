@@ -145,16 +145,16 @@ The server MUST listen on both IPv4 and IPv6 using a dual-stack socket.
 
 ---
 
-### Requirement: Passive mode disabled by default
-Passive FTP mode (`PASV`/`EPSV`) SHALL be disabled by default and MUST be explicitly enabled via configuration.
+### Requirement: Passive mode enabled by default
+Passive FTP mode (`PASV`/`EPSV`) SHALL be enabled by default and MUST be possible to disable via configuration.
+
+#### Scenario: Passive mode enabled (default)
+- **WHEN** `passive_enabled` is not set (default `true`) in config
+- **THEN** the server responds to `PASV`/`EPSV` with a valid passive address and port
 
 #### Scenario: Passive mode disabled
-- **WHEN** `passive_enabled: false` (default) in config
+- **WHEN** `passive_enabled: false` in config
 - **THEN** the server responds to `PASV` and `EPSV` with `502 Passive mode disabled`
-
-#### Scenario: Passive mode enabled
-- **WHEN** `passive_enabled: true` in config
-- **THEN** the server responds to `PASV`/`EPSV` with a valid passive address and port
 
 ---
 
@@ -208,7 +208,7 @@ The server MUST support active mode (`PORT`/`EPRT`) for data transfers.
 Commands that are recognized but not implemented (`LPSV`, `STAT`, `ABOR`, `ALLO`, `ACCT`, `SMNT`, `REIN`, `MLSD`, `MLST`, `REST`) SHALL be answered with `502 Command not implemented`, so that clients fall back to supported commands. A completely unknown command SHALL be answered with `500 Command not recognized`.
 
 #### Scenario: Passive fallback command not implemented
-- **WHEN** a client sends `LPSV` (e.g. after `EPSV`/`PASV` were refused because passive mode is disabled)
+- **WHEN** a client sends `LPSV` (e.g. after `EPSV`/`PASV` were refused because passive mode is disabled via configuration)
 - **THEN** the server responds with `502 Command not implemented`
 
 #### Scenario: Unknown command

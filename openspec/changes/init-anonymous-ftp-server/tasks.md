@@ -10,7 +10,7 @@
 ## 2. Configuration
 - [x] 2.1 Define config struct with YAML tags
 - [x] 2.2 Implement config file loading and validation
-- [x] 2.3 Add config defaults (passive disabled, sensible ports)
+- [x] 2.3 Add config defaults (passive enabled, sensible ports)
 - [x] 2.4 Validate serve directory exists and is readable
 - [x] 2.5 Add unit tests for config parsing
 - [x] 2.6 Make `user`/`group` optional (default: the predefined numeric IDs `65534`/`65534` when unset; names or numeric IDs accepted when set)

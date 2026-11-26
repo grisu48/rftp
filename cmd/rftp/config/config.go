@@ -126,7 +126,7 @@ const (
 func Default() *Config {
 	return &Config{
 		ListenAddr:     ":21",
-		PassiveEnabled: false,
+		PassiveEnabled: true,
 		PassivePortMin: 40000,
 		PassivePortMax: 40100,
 		BandwidthLimit: 0, // unlimited
