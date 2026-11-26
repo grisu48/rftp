@@ -74,8 +74,9 @@ and `serve_dir` are required. `user`/`group` are optional (default
   `unshare(CLONE_NEWNS)` + private propagation + chroot + read-only re-mount on
   a locked thread (`security/namespace.go`), because `unshare(2)`/`chroot(2)`
   are per-thread. The read-only re-mount therefore never affects the rest of
-  the system; the config is passed to the re-executed image via the
-  `RFTP_CONFIG` env var (`config.InlineEnv`).
+  the system; the merged config is passed to the re-executed image via the
+  `RFTP_*` config environment variables (`config.SetEnv`), since the config
+  file may lie outside the new root.
 - **Path safety**: traversal above the served root (`CWD ../../etc`) and
   symlinks escaping it are rejected with `550 Access denied`. All file access
   goes through an `os.Root` scoped to the served root (via `Session.scoped`),

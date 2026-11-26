@@ -31,17 +31,17 @@ func main() {
 }
 
 func run(configPath string) error {
-	// The re-executed image receives the configuration via the environment:
-	// after chroot the config file path may no longer be resolvable. The
-	// inline config is the already-merged configuration, so environment
-	// variables are not re-applied — the config file keeps precedence over
-	// them. Without the inline config, the configuration comes from the
-	// RFTP_* environment variables and, when -config is given, from the
-	// config file (which takes precedence per key).
+	// The startup re-exec passes the merged configuration to the new image
+	// via RFTP_* environment variables (after chroot the config file path
+	// may no longer be resolvable), so the re-executed image loads the
+	// configuration from the environment alone and ignores -config. In a
+	// normal start, the configuration comes from the RFTP_* environment
+	// variables and, when -config is given, from the config file (which
+	// takes precedence per key).
 	var cfg *config.Config
 	var err error
-	if inline := os.Getenv(config.InlineEnv); inline != "" {
-		cfg, err = config.Parse([]byte(inline))
+	if security.Reexeced() {
+		cfg, err = config.LoadWithEnv("", os.LookupEnv)
 	} else {
 		cfg, err = config.LoadWithEnv(configPath, os.LookupEnv)
 	}
@@ -65,12 +65,8 @@ func run(configPath string) error {
 		if cfg.Chroot {
 			inline.ServeDir = "/" // the re-executed image is already chrooted
 		}
-		data, err := config.Encode(&inline)
-		if err != nil {
-			return fmt.Errorf("cannot serialize config for startup re-exec: %w", err)
-		}
-		if err := os.Setenv(config.InlineEnv, string(data)); err != nil {
-			return fmt.Errorf("cannot pass config to startup re-exec: %w", err)
+		if err := inline.SetEnv(); err != nil {
+			return fmt.Errorf("cannot pass config to startup re-exec via environment: %w", err)
 		}
 		if err := security.Reexec(hardening); err != nil {
 			return err

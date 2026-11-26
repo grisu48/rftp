@@ -82,7 +82,7 @@ never continues serving in a degraded security posture (see *Secure by default*)
 **Why**:
 - `unshare(2)` and `chroot(2)` only affect the calling thread; applying them before the re-exec (while the thread is locked and the image is replaced via `execveat`) makes them apply to the whole process — every thread the Go runtime creates afterwards inherits the namespace and root. Applying them later in a multi-threaded process would leave the accept loop and handler threads in the host namespace/root
 - The read-only re-mount is done inside a private mount namespace (`MS_REC|MS_PRIVATE` on `/` right after `unshare`) so it is visible only to the server process; without this, the re-mount would affect the whole system (and on hosts with shared mounts it would propagate back even from a new namespace)
-- The configuration is passed to the re-executed image via the environment (`RFTP_CONFIG`), because the config file path may be outside the chroot; the executable is re-executed through an already-open fd (`execveat`) for the same reason
+- The merged configuration is passed to the re-executed image via the `RFTP_*` configuration environment variables (`config.SetEnv`), because the config file path may be outside the chroot; the executable is re-executed through an already-open fd (`execveat`) for the same reason
 - Binding must happen before dropping privileges
 - Chroot before dropping privileges ensures we're in the right context
 - Read-only mount prevents any accidental writes

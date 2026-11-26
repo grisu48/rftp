@@ -18,11 +18,6 @@ import (
 // Bandwidth limit in bytes per second. Zero means unlimited.
 type Bandwidth int64
 
-// MarshalYAML serializes the limit as a plain number of bytes per second.
-func (b Bandwidth) MarshalYAML() (any, error) {
-	return int64(b), nil
-}
-
 // UnmarshalYAML parses a bandwidth limit from a YAML scalar: a bare number
 // (bytes per second) or a value with a unit suffix, e.g. "10MiB/s".
 func (b *Bandwidth) UnmarshalYAML(value *yaml.Node) error {
@@ -131,13 +126,6 @@ func Default() *Config {
 	}
 }
 
-// InlineEnv is the environment variable used to pass the serialized
-// configuration to the re-executed process image (see security.Reexec): after
-// chroot the config file path may be unreachable, so the new image reads the
-// configuration from this variable instead of from a file. It is reserved
-// for this purpose and is not a configuration key.
-const InlineEnv = "RFTP_CONFIG"
-
 // EnvPrefix is the prefix of the environment variables that configure the
 // server. Each configuration key maps to an environment variable named
 // EnvPrefix + the uppercased key, e.g. "listen_addr" -> "RFTP_LISTEN_ADDR",
@@ -152,7 +140,7 @@ func EnvName(key string) string {
 // applyEnv applies configuration from environment variables to cfg. For each
 // known configuration key, the variable EnvName(key) is looked up and its
 // value is parsed with the same rules as the corresponding YAML field.
-// Unknown RFTP_* variables (including the reserved InlineEnv) are ignored.
+// Unknown RFTP_* variables (e.g. the RFTP_REEXEC startup guard) are ignored.
 // lookup is typically os.LookupEnv.
 func applyEnv(cfg *Config, lookup func(name string) (value string, ok bool)) error {
 	// String fields take the raw environment value (an environment variable
@@ -236,24 +224,39 @@ func load(path string, lookup func(name string) (value string, ok bool)) (*Confi
 	return cfg, nil
 }
 
-// Parse unmarshals and validates configuration from YAML data. It is used for
-// the configuration passed to the re-executed process image via InlineEnv,
-// where no file is involved.
-func Parse(data []byte) (*Config, error) {
-	cfg := Default()
-	if err := yaml.Unmarshal(data, cfg); err != nil {
-		return nil, fmt.Errorf("cannot parse config: %w", err)
+// EnvVars returns the configuration as RFTP_* environment variable
+// assignments ("NAME=value"), one per configuration key. Values are
+// formatted so that loading them back from the environment (LoadWithEnv with
+// an empty path) reproduces the configuration exactly.
+func (c *Config) EnvVars() []string {
+	return []string{
+		EnvName("listen_addr") + "=" + c.ListenAddr,
+		EnvName("passive_enabled") + "=" + strconv.FormatBool(c.PassiveEnabled),
+		EnvName("passive_port_min") + "=" + strconv.Itoa(c.PassivePortMin),
+		EnvName("passive_port_max") + "=" + strconv.Itoa(c.PassivePortMax),
+		EnvName("bandwidth_limit") + "=" + strconv.FormatInt(int64(c.BandwidthLimit), 10),
+		EnvName("serve_dir") + "=" + c.ServeDir,
+		EnvName("user") + "=" + c.User,
+		EnvName("group") + "=" + c.Group,
+		EnvName("chroot") + "=" + strconv.FormatBool(c.Chroot),
+		EnvName("read_only_mount") + "=" + strconv.FormatBool(c.ReadOnlyMount),
+		EnvName("log_level") + "=" + c.LogLevel,
 	}
-	if err := cfg.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid config: %w", err)
-	}
-	return cfg, nil
 }
 
-// Encode serializes c to YAML; the result can be passed to the re-executed
-// process image via InlineEnv and parsed back with Parse.
-func Encode(c *Config) ([]byte, error) {
-	return yaml.Marshal(c)
+// SetEnv exports the configuration as RFTP_* environment variables in the
+// current process environment. It is used to pass the merged configuration to
+// the startup re-exec (see security.Reexec): after chroot the config file
+// path may no longer be resolvable, so the new image reads the configuration
+// from these variables instead of from a file.
+func (c *Config) SetEnv() error {
+	for _, kv := range c.EnvVars() {
+		name, value, _ := strings.Cut(kv, "=")
+		if err := os.Setenv(name, value); err != nil {
+			return fmt.Errorf("cannot set environment variable %s: %w", name, err)
+		}
+	}
+	return nil
 }
 
 // Validate checks the configuration for missing or invalid fields.

@@ -253,9 +253,10 @@ func TestServeDirMadeAbsolute(t *testing.T) {
 	}
 }
 
-func TestEncodeParseRoundTrip(t *testing.T) {
-	// The startup re-exec passes the configuration to the new image via the
-	// environment (InlineEnv); Encode/Parse must round-trip losslessly.
+func TestEnvVarsRoundTrip(t *testing.T) {
+	// The startup re-exec passes the merged configuration to the new image via
+	// RFTP_* environment variables; EnvVars + env-only loading must round-trip
+	// the configuration exactly.
 	dir := t.TempDir()
 	cfg := Default()
 	cfg.ListenAddr = "127.0.0.1:2121"
@@ -269,17 +270,48 @@ func TestEncodeParseRoundTrip(t *testing.T) {
 	cfg.ReadOnlyMount = true
 	cfg.LogLevel = "debug"
 	cfg.BandwidthLimit = 10 * 1024 * 1024
-
-	data, err := Encode(cfg)
-	if err != nil {
-		t.Fatalf("Encode: %v", err)
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate: %v", err)
 	}
-	back, err := Parse(data)
+
+	vars := cfg.EnvVars()
+	env := map[string]string{}
+	for _, kv := range vars {
+		name, value, _ := strings.Cut(kv, "=")
+		if _, dup := env[name]; dup {
+			t.Fatalf("duplicate environment variable %s in %v", name, vars)
+		}
+		env[name] = value
+	}
+	back, err := LoadWithEnv("", envLookup(env))
 	if err != nil {
-		t.Fatalf("Parse: %v", err)
+		t.Fatalf("LoadWithEnv: %v", err)
 	}
 	if *back != *cfg {
 		t.Errorf("round trip mismatch:\n got %+v\nwant %+v", back, cfg)
+	}
+}
+
+func TestSetEnv(t *testing.T) {
+	// SetEnv must export every configuration key into the process environment.
+	cfg := Default()
+	cfg.ServeDir = t.TempDir()
+	cfg.ListenAddr = "127.0.0.1:2121"
+	vars := cfg.EnvVars()
+	t.Cleanup(func() {
+		for _, kv := range vars {
+			name, _, _ := strings.Cut(kv, "=")
+			os.Unsetenv(name)
+		}
+	})
+	if err := cfg.SetEnv(); err != nil {
+		t.Fatalf("SetEnv: %v", err)
+	}
+	for _, kv := range vars {
+		name, value, _ := strings.Cut(kv, "=")
+		if got := os.Getenv(name); got != value {
+			t.Errorf("%s = %q, want %q", name, got, value)
+		}
 	}
 }
 
@@ -561,13 +593,14 @@ func TestLoadWithEnvMissingRequiredFields(t *testing.T) {
 }
 
 func TestLoadWithEnvIgnoresUnknownAndReservedVars(t *testing.T) {
-	// Unknown RFTP_* variables and the reserved InlineEnv (RFTP_CONFIG) are
-	// not configuration keys and must be ignored.
+	// Unknown RFTP_* variables (e.g. the RFTP_REEXEC startup guard) are not
+	// configuration keys and must be ignored.
 	dir := t.TempDir()
 	env := map[string]string{
 		"RFTP_LISTEN_ADDR": ":2121",
 		"RFTP_SERVE_DIR":   dir,
-		"RFTP_CONFIG":      "not yaml config: [",
+		"RFTP_REEXEC":      "1",
+		"RFTP_CONFIG":      "not a config key anymore",
 		"RFTP_UNKNOWN":     "whatever",
 	}
 	cfg, err := LoadWithEnv("", envLookup(env))

@@ -132,8 +132,9 @@ when omitted, configuration is taken from the environment alone:
 RFTP_LISTEN_ADDR=":21" RFTP_SERVE_DIR=/srv/ftp ./rftp
 ```
 
-(`RFTP_CONFIG` is reserved internally to pass the merged configuration to the
-startup re-exec after chroot, and is not a configuration key.)
+(When the server re-execs itself at startup for chroot/namespace isolation, it
+passes the merged configuration to the new image via these same `RFTP_*`
+variables, since the config file may lie outside the chroot.)
 
 - Info/debug logs go to **stdout**, warnings/errors go to **stderr**. No log
   files are written.

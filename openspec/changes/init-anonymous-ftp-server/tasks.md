@@ -17,6 +17,7 @@
 - [x] 2.7 Add environment variable configuration (`RFTP_<KEY>`), with the config file taking precedence over environment variables per key
 - [x] 2.8 Make `-config` optional when required fields are provided via environment variables; reject invalid env var values at startup
 - [x] 2.9 Add unit tests for env var parsing and file-over-env precedence
+- [x] 2.10 Replace the `RFTP_CONFIG` inline-YAML handoff to the startup re-exec with the `RFTP_*` env vars (drop `config.Encode`/`Parse`/`InlineEnv` and `Bandwidth.MarshalYAML`); `security.Reexec` passes the environment through unchanged
 
 ## 3. Security Layer
 - [x] 3.1 Implement chroot functionality (`security/chroot.go`)
