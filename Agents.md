@@ -84,8 +84,12 @@ is disabled by default (`passive_enabled: false`).
   goes through an `os.Root` scoped to the served root (via `Session.scoped`),
   so the check-then-open sequence has no TOCTOU window.
 - **Anti FTP-bounce (CWE-441)**: `PORT`/`EPRT`/`LPRT` addresses must match the
-  control connection peer (`Session.checkDataAddr`), else `501`; passive data
-  connections are only accepted from the control peer.
+  control connection peer (`Session.checkDataAddr`), else `501` — except
+  loopback addresses, which are always accepted so active mode works behind a
+  port forward/NAT (e.g. `podman run -p`), where the control connection
+  arrives from the forwarder's address while the client advertises its own
+  loopback address. Foreign non-loopback addresses are always rejected.
+  Passive data connections are only accepted from the control peer.
 - **Bounded input**: command lines are capped at `maxLineLen` (8 KiB) using a
   bounded `bufio` buffer; overlong lines get `500 Command line too long` and
   the session continues.

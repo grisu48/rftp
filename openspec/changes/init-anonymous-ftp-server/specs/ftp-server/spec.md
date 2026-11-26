@@ -194,6 +194,14 @@ The server MUST support active mode (`PORT`/`EPRT`) for data transfers.
 - **WHEN** a client sends `LPRT <af>,<hal>,<address bytes>,<pal>,<port bytes>` (RFC 1639)
 - **THEN** the server responds with `200 LPRT command successful` and connects to the specified address for data transfer
 
+#### Scenario: Active mode behind a port forward/NAT
+- **WHEN** the server runs behind a port forward (e.g. `podman run -p 2121:2121`), so the control connection arrives from the forwarder's address, and the client sends `PORT`/`EPRT`/`LPRT` advertising its own **loopback** address
+- **THEN** the server responds `200` and connects to the advertised loopback address, so active mode works through the port forward
+
+#### Scenario: Anti FTP-bounce (CWE-441)
+- **WHEN** a client sends `PORT`/`EPRT`/`LPRT` with a foreign **non-loopback** address that is not the control connection's peer
+- **THEN** the server responds `501 ... must match the control connection` and does NOT connect to that address
+
 ---
 
 ### Requirement: Recognized but unimplemented commands get 502

@@ -106,8 +106,19 @@ func sameIP(a, b net.IP) bool {
 // host as the control connection. Otherwise the server could be abused to
 // open connections to arbitrary third-party hosts and ports (port scanning,
 // attacks on internal services).
+//
+// Loopback addresses are always accepted as the one exception: when the
+// server sits behind a port forward/NAT (e.g. `podman run -p 2121:2121`),
+// the control connection arrives from the forwarding host's address while
+// the client advertises its own (loopback) address in PORT/EPRT/LPRT.
+// Rejecting those would break active mode entirely behind port forwards.
+// Foreign non-loopback addresses are still rejected, so the server can
+// never be abused to connect to third-party hosts.
 func (s *Session) checkDataAddr(ip net.IP) bool {
-	return s.remoteIP != nil && sameIP(ip, s.remoteIP)
+	if s.remoteIP == nil {
+		return false
+	}
+	return sameIP(ip, s.remoteIP) || ip.IsLoopback()
 }
 
 // Run handles the control connection until the client quits, the idle

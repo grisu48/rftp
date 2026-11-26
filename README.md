@@ -23,6 +23,10 @@ system is unaffected), and dropping root privileges.
 - **Anti FTP-bounce** — the data address in `PORT`/`EPRT`/`LPRT` must match the
   control connection's peer, otherwise the command is rejected with `501`. The
   server cannot be abused to connect to arbitrary third-party hosts/ports.
+  Loopback addresses are always accepted, so active mode also works behind a
+  port forward/NAT (e.g. `podman run -p 2121:2121`), where the control
+  connection arrives from the forwarder's address while the client advertises
+  its own loopback address.
 - **Bounded input** — command lines are capped at 8 KiB; overlong lines are
   rejected with `500` (the remainder is drained, the session stays usable), so a
   client cannot exhaust memory with an unterminated line. Passive data connections
@@ -163,8 +167,9 @@ variables, since the config file may lie outside the chroot.)
 3. Drop privileges to `user`/`group` (fatal on failure).
 4. Serve read-only, validating every path and rejecting symlink escapes. All file
    access is performed through an `os.Root` scoped to the served directory (atomic
-   confinement), active-mode data addresses must match the control peer
-   (anti-bounce), passive data connections are only accepted from the control
+   confinement), active-mode data addresses must match the control peer or be
+   loopback (anti-bounce, with a loopback exception for port-forward/NAT
+   setups), passive data connections are only accepted from the control
    peer, and command lines are length-capped.
 
 **Secure by default (fail-closed):** the server never skips or silently ignores

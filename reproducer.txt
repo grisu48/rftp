@@ -1,0 +1,109 @@
+Reproducer: active (non-passive) mode fails behind a port forward
+==================================================================
+
+Issue
+-----
+With the default config (`passive_enabled: false`, i.e. non-passive mode),
+data transfers of the classic `ftp` client fail when the server runs behind
+a port forward such as `podman run -p 2121:2121`. The forwarder rewrites the
+source address, so the server sees the control connection coming from the
+forwarder's/host's address (e.g. `remote=[2a02:...]`), while the client
+advertises its own (loopback) address in `PORT`/`EPRT`/`LPRT`. The
+anti-bounce check `Session.checkDataAddr` compared the advertised address
+with the control peer and rejected every active-mode command with
+
+    501 PORT/EPRT/LPRT address must match the control connection
+
+so `ls`/`get` failed with e.g.:
+
+    ftp> ls
+    EPRT address must match the control connection
+    LPRT address must match the control connection
+    ftp: bind: Address already in use
+
+(Direct connections without a port forward were not affected.)
+
+Fix
+---
+`checkDataAddr` now also accepts loopback addresses (the client's own address
+behind a port forward/NAT) in addition to the exact control peer. Foreign
+non-loopback addresses are still rejected with 501 (anti FTP-bounce, CWE-441
+is preserved). See cmd/rftp/server/session.go and the regression test
+TestActiveModeBehindPortForward in cmd/rftp/server/integration_test.go.
+
+How to reproduce
+----------------
+1. Build and prepare:
+
+       go build -o rftp ./cmd/rftp
+       mkdir -p /tmp/ftpdata && echo hello > /tmp/ftpdata/hello.txt
+       cat > /tmp/rftp.yaml <<'EOF'
+       listen_addr: "[::]:2121"
+       serve_dir: /tmp/ftpdata
+       chroot: false
+       read_only_mount: false
+       passive_enabled: false
+       bandwidth_limit: 0
+       log_level: debug
+       EOF
+       ./rftp -config /tmp/rftp.yaml &
+
+2. Direct connection (IPv6 mode) works, even before the fix:
+
+       printf 'user ftp a@b.c\nls\nquit\n' | ftp -n ::1 2121
+       # -> prints the directory listing (active mode via EPRT)
+
+3. Port forward (`podman run -p` equivalent). podman/rootlessport forward
+   published ports with the host's source address. Simulate that with a
+   tiny TCP proxy that dials the server from the host's global IPv6 address
+   (here fd4a:...::2 on eth0), so the server sees a different control peer
+   than the client advertises:
+
+       # proxy6.py: listen [::1]:3131 -> forward to [::1]:2121 with source
+       # <host global IPv6>, e.g. fd4a:d0b2:d9e1:bd8a::2
+       python3 proxy6.py &        # see below
+
+       cat > proxy6.py <<'EOF'
+       import socket, threading
+       srv = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+       srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+       srv.bind(("::1", 3131)); srv.listen(5)
+       def pipe(a, b):
+           try:
+               while True:
+                   d = a.recv(4096)
+                   if not d: break
+                   b.sendall(d)
+           except OSError: pass
+       def handle(c):
+           u = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+           u.bind(("fd4a:d0b2:d9e1:bd8a::2", 0))   # host global addr as source
+           u.connect(("::1", 2121))
+           threading.Thread(target=pipe, args=(c, u), daemon=True).start()
+           threading.Thread(target=pipe, args=(u, c), daemon=True).start()
+       while True:
+           c, _ = srv.accept()
+           threading.Thread(target=handle, args=(c,), daemon=True).start()
+       EOF
+
+4. Connect with the `ftp` program in IPv6 mode through the "published" port,
+   in non-passive (active) mode, and list:
+
+       printf 'user ftp a@b.c\nls\nquit\n' | ftp -n ::1 3131
+
+   Before the fix:  501 EPRT/LPRT address must match the control connection
+                    -> `ls` fails (server log: remote=[fd4a:...::2],
+                       WARN rejected EPRT to foreign host ... addr=::1)
+   After the fix:   the listing is printed (`ls` and `get` work).
+
+   (The same happens over IPv4 through the forward: `PORT 127,0,0,1,...`
+   was rejected with 501 while the server saw e.g. remote=127.0.0.2.)
+
+Note: with a real `podman run -p`, a client connecting via `localhost` still
+cannot be reached back on its loopback address from inside the container
+network namespace — that is a protocol-level limitation of active mode
+behind NAT, which is why passive mode exists (`passive_enabled: true` plus a
+published passive port range). The fix here removes the bogus 501 rejection
+so active mode works whenever the advertised address is actually reachable
+(e.g. connecting via the host's non-loopback address, or same-host port
+forwards), instead of failing the PORT/EPRT/LPRT command outright.

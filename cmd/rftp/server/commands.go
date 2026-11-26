@@ -553,7 +553,8 @@ func (s *Session) cmdPort(arg string) {
 	}
 	ip := net.IPv4(byte(nums[0]), byte(nums[1]), byte(nums[2]), byte(nums[3])) // #nosec G115 -- nums[i] range-checked to 0..255 above
 	if !s.checkDataAddr(ip) {
-		// Anti-FTP-bounce: the data address must be the control peer itself.
+		// Anti-FTP-bounce: the data address must be the control peer itself
+		// (loopback is allowed for port-forward/NAT setups, see checkDataAddr).
 		logger.Warn("rejected PORT to foreign host remote=%s addr=%s", s.remoteAddr, ip)
 		s.reply(ftp.R501SyntaxErrorParams, "PORT address must match the control connection")
 		return
@@ -602,7 +603,8 @@ func (s *Session) cmdEprt(arg string) {
 		return
 	}
 	if !s.checkDataAddr(ip) {
-		// Anti-FTP-bounce: the data address must be the control peer itself.
+		// Anti-FTP-bounce: the data address must be the control peer itself
+		// (loopback is allowed for port-forward/NAT setups, see checkDataAddr).
 		logger.Warn("rejected EPRT to foreign host remote=%s addr=%s", s.remoteAddr, ip)
 		s.reply(ftp.R501SyntaxErrorParams, "EPRT address must match the control connection")
 		return
@@ -681,7 +683,8 @@ func (s *Session) cmdLprt(arg string) {
 		return
 	}
 	if !s.checkDataAddr(ip) {
-		// Anti-FTP-bounce: the data address must be the control peer itself.
+		// Anti-FTP-bounce: the data address must be the control peer itself
+		// (loopback is allowed for port-forward/NAT setups, see checkDataAddr).
 		logger.Warn("rejected LPRT to foreign host remote=%s addr=%s", s.remoteAddr, ip)
 		s.reply(ftp.R501SyntaxErrorParams, "LPRT address must match the control connection")
 		return

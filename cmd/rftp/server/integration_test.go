@@ -5,6 +5,7 @@ package server
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -577,29 +578,99 @@ func TestPortSyntaxErrors(t *testing.T) {
 }
 
 // TestDataAddrBounceRejected verifies the anti-FTP-bounce protection
-// (CWE-441): PORT/EPRT/LPRT with an address that does not match the control
-// connection's peer must be rejected, so the server cannot be abused to open
-// data connections to arbitrary third-party hosts.
+// (CWE-441): PORT/EPRT/LPRT with a foreign (non-loopback) address that does
+// not match the control connection's peer must be rejected, so the server
+// cannot be abused to open data connections to arbitrary third-party hosts.
+// Loopback addresses are accepted so that active mode keeps working behind
+// port forwards/NAT (e.g. `podman run -p`), where the control connection
+// arrives from the forwarder's address while the client advertises its own
+// loopback address.
 func TestDataAddrBounceRejected(t *testing.T) {
 	_, addr := startTestServer(t, nil)
 	c := dialTestClient(t, addr)
 	c.login()
 
-	// The control connection comes from 127.0.0.1; 127.0.0.2 is a foreign
-	// host and must be refused on all three active-mode commands.
-	c.cmd("PORT 127,0,0,2,195,80")
+	// The control connection comes from 127.0.0.1; foreign non-loopback
+	// addresses (192.0.2.1 = TEST-NET-1, 2001:db8::1 = documentation prefix)
+	// must be refused on all three active-mode commands.
+	c.cmd("PORT 192,0,2,1,195,80")
 	c.expect(501, "must match the control connection")
-	c.cmd("EPRT |1|127.0.0.2|50000|")
+	c.cmd("EPRT |1|192.0.2.1|50000|")
 	c.expect(501, "must match the control connection")
-	c.cmd("LPRT 4,4,127,0,0,2,2,195,80")
+	c.cmd("LPRT 4,4,192,0,2,1,2,195,80")
+	c.expect(501, "must match the control connection")
+	c.cmd("EPRT |2|2001:db8::1|50000|")
 	c.expect(501, "must match the control connection")
 
-	// An IPv6 address on an IPv4 control connection is foreign too.
+	// Loopback addresses are accepted (port-forward/NAT case).
+	c.cmd("PORT 127,0,0,2,195,80")
+	c.expect(200, "PORT command successful")
 	c.cmd("EPRT |2|::1|50000|")
-	c.expect(501, "must match the control connection")
+	c.expect(200, "EPRT command successful")
 
 	// The session is still usable with a correct PORT afterwards.
 	ln := setupActiveMode(t, c)
+	c.cmd("RETR hello.txt")
+	c.expect(150)
+	if got := readDataConn(t, c, ln); got != "hello world\n" {
+		t.Errorf("RETR data = %q", got)
+	}
+	c.expect(226)
+}
+
+// TestActiveModeBehindPortForward simulates `podman run -p 2121:2121`: the
+// control connection is forwarded by a proxy, so the server sees the
+// forwarder's source address (127.0.0.2) as the control peer, while the
+// client advertises its own address (127.0.0.1) in PORT. Active mode must
+// still work: PORT is accepted and the server connects to the advertised
+// (loopback) address where the client's data listener waits.
+func TestActiveModeBehindPortForward(t *testing.T) {
+	_, addr := startTestServer(t, nil) // server on 127.0.0.1:ephemeral
+	host, portStr, err := net.SplitHostPort(addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Proxy that forwards to the server but dials out from 127.0.0.2, so the
+	// server sees 127.0.0.2 as the control peer (like a port forward does).
+	proxyLn, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Skipf("cannot listen on 127.0.0.1: %v", err)
+	}
+	defer proxyLn.Close()
+	go func() {
+		for {
+			c, err := proxyLn.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				d := net.Dialer{LocalAddr: &net.TCPAddr{IP: net.ParseIP("127.0.0.2")}}
+				u, err := d.Dial("tcp", net.JoinHostPort(host, portStr))
+				if err != nil {
+					_ = c.Close()
+					return
+				}
+				go func() { _, _ = io.Copy(u, c); _ = u.Close() }()
+				go func() { _, _ = io.Copy(c, u); _ = c.Close() }()
+			}()
+		}
+	}()
+
+	c := dialTestClient(t, proxyLn.Addr().String())
+	c.login()
+
+	// The client's data listener is on its own address 127.0.0.1; the server
+	// sees the control peer as 127.0.0.2 (the forwarder).
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	dport := ln.Addr().(*net.TCPAddr).Port
+	c.cmd("PORT 127,0,0,1,%d,%d", dport>>8, dport&0xff)
+	c.expect(200, "PORT command successful")
+
 	c.cmd("RETR hello.txt")
 	c.expect(150)
 	if got := readDataConn(t, c, ln); got != "hello world\n" {
