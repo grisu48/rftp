@@ -3,7 +3,9 @@
 // Package ftp contains FTP protocol constants, helpers and data types (RFC 959).
 package ftp
 
-import "strings"
+import (
+	"strings"
+)
 
 // FTP response codes (RFC 959).
 const (
@@ -131,9 +133,17 @@ type Command struct {
 	Arg  string // everything after the first space, e.g. "anonymous"
 }
 
+// Checks if the given string only contains of letters
+func isLetter(s string) bool {
+	return !strings.ContainsFunc(s, func(r rune) bool {
+		return (r < 'a' || r > 'z') && (r < 'A' || r > 'Z')
+	})
+}
+
 // ParseCommand parses a raw FTP command line (with or without the trailing
 // CRLF) into a Command. The verb is upper-cased; an empty line yields an
-// empty Name.
+// empty Name. Invalid command (i,e, non-alphabetic characters) are ignored, i.e.
+// it returns an empty Name.
 func ParseCommand(line string) Command {
 	line = strings.TrimRight(line, "\r\n")
 	line = strings.TrimLeft(line, " \t")
@@ -141,6 +151,10 @@ func ParseCommand(line string) Command {
 		return Command{}
 	}
 	verb, arg, _ := strings.Cut(line, " ")
+	// Security: Ensure the actual command only consist of alphabetic characters
+	if !isLetter(verb) {
+		return Command{}
+	}
 	return Command{
 		Name: strings.ToUpper(verb),
 		Arg:  strings.TrimLeft(arg, " "),
