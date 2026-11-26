@@ -62,9 +62,9 @@ func TestAllowlistClassifiesEveryCommand(t *testing.T) {
 	// Every filesystem-modifying RFC 959 command (plus X-aliases and SITE)
 	// must be rejected as a write command, never allowed.
 	for _, name := range []string{
-		ftp.CmdSTOR, ftp.CmdAPPE, ftp.CmdSTOU, ftp.CmdDELE,
-		ftp.CmdRNFR, ftp.CmdRNTO, ftp.CmdMKD, ftp.CmdXMKD,
-		ftp.CmdRMD, ftp.CmdXRMD, ftp.CmdSITE,
+		ftp.CmdStore, ftp.CmdAppend, ftp.CmdStoreUnique, ftp.CmdDelete,
+		ftp.CmdRenameFrom, ftp.CmdRenameTo, ftp.CmdMakeDirectory, ftp.CmdXMakeDirectory,
+		ftp.CmdRemoveDirectory, ftp.CmdXRemoveDirectory, ftp.CmdSite,
 	} {
 		if allowedCommands[name] {
 			t.Errorf("write command %s must not be in allowedCommands", name)
@@ -232,15 +232,15 @@ func TestCommandSurfaceClassification(t *testing.T) {
 		cmd  string
 		code int
 	}{
-		{ftp.CmdPWD, 257}, {ftp.CmdXPWD, 257},
-		{ftp.CmdCWD + " /", 250}, {ftp.CmdXCWD + " /", 250}, {ftp.CmdCDUP, 250},
-		{ftp.CmdTYPE + " I", 200}, {ftp.CmdMODE + " S", 200}, {ftp.CmdSTRU + " F", 200},
-		{ftp.CmdSYST, 215}, {ftp.CmdFEAT, 211}, {ftp.CmdHELP, 214},
-		{ftp.CmdOPTS + " UTF8 ON", 200}, {ftp.CmdNOOP, 200},
-		{ftp.CmdSIZE + " hello.txt", 213}, {ftp.CmdMDTM + " hello.txt", 213},
-		{ftp.CmdPORT + " 127,0,0,1,200,10", 200},
-		{ftp.CmdEPRT + " |1|127.0.0.1|5001|", 200},
-		{ftp.CmdLPRT + " 4,4,127,0,0,1,2,19,137", 200},
+		{ftp.CmdPrintWorkingDirectory, 257}, {ftp.CmdXPrintWorkingDirectory, 257},
+		{ftp.CmdChangeWorkingDirectory + " /", 250}, {ftp.CmdXChangeWorkingDirectory + " /", 250}, {ftp.CmdChangeToParentDirectory, 250},
+		{ftp.CmdType + " I", 200}, {ftp.CmdMode + " S", 200}, {ftp.CmdStructure + " F", 200},
+		{ftp.CmdSystem, 215}, {ftp.CmdFeatures, 211}, {ftp.CmdHelp, 214},
+		{ftp.CmdOptions + " UTF8 ON", 200}, {ftp.CmdNoop, 200},
+		{ftp.CmdSize + " hello.txt", 213}, {ftp.CmdModificationTime + " hello.txt", 213},
+		{ftp.CmdPort + " 127,0,0,1,200,10", 200},
+		{ftp.CmdExtendedPort + " |1|127.0.0.1|5001|", 200},
+		{ftp.CmdLongPort + " 4,4,127,0,0,1,2,19,137", 200},
 	}
 	for _, e := range ok {
 		c.cmd("%s", e.cmd)
@@ -248,11 +248,11 @@ func TestCommandSurfaceClassification(t *testing.T) {
 	}
 
 	notImplemented := []string{
-		ftp.CmdLPSV, ftp.CmdSTAT, ftp.CmdABOR, ftp.CmdALLO + " 100",
-		ftp.CmdACCT + " x", ftp.CmdSMNT + " /", ftp.CmdREIN,
-		ftp.CmdMLSD, ftp.CmdMLST + " hello.txt", ftp.CmdREST + " 0",
-		ftp.CmdPASV, ftp.CmdEPSV, // passive mode disabled in the test config
-		ftp.CmdAUTH + " TLS", ftp.CmdPROT + " P", ftp.CmdPBSZ + " 0",
+		ftp.CmdLongPassive, ftp.CmdStatus, ftp.CmdAbort, ftp.CmdAllocate + " 100",
+		ftp.CmdAccount + " x", ftp.CmdStructureMount + " /", ftp.CmdReinitialize,
+		ftp.CmdMlsd, ftp.CmdMlst + " hello.txt", ftp.CmdRestart + " 0",
+		ftp.CmdPassive, ftp.CmdExtendedPassive, // passive mode disabled in the test config
+		ftp.CmdAuth + " TLS", ftp.CmdProtection + " P", ftp.CmdProtectionBufferSize + " 0",
 	}
 	for _, cmd := range notImplemented {
 		c.cmd("%s", cmd)

@@ -141,7 +141,7 @@ func (s *Session) Run() {
 			s.reply(ftp.R500SyntaxError, "Command not recognized")
 			continue
 		}
-		if cmd.Name != ftp.CmdPASS {
+		if cmd.Name != ftp.CmdPassword {
 			logger.Debug("command remote=%s cmd=%s arg=%s", s.remoteAddr, cmd.Name, cmd.Arg)
 		} else {
 			logger.Debug("command remote=%s cmd=%s", s.remoteAddr, cmd.Name)

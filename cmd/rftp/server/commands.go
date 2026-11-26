@@ -19,14 +19,14 @@ import (
 
 // preLoginCommands may be used before USER/PASS completes.
 var preLoginCommands = map[string]bool{
-	ftp.CmdUSER: true,
-	ftp.CmdPASS: true,
-	ftp.CmdQUIT: true,
-	ftp.CmdNOOP: true,
-	ftp.CmdSYST: true,
-	ftp.CmdFEAT: true,
-	ftp.CmdHELP: true,
-	ftp.CmdOPTS: true,
+	ftp.CmdUser:     true,
+	ftp.CmdPassword: true,
+	ftp.CmdQuit:     true,
+	ftp.CmdNoop:     true,
+	ftp.CmdSystem:   true,
+	ftp.CmdFeatures: true,
+	ftp.CmdHelp:     true,
+	ftp.CmdOptions:  true,
 }
 
 // allowedCommands is the complete allowlist of commands this server ever
@@ -38,36 +38,36 @@ var preLoginCommands = map[string]bool{
 // command) could reach a handler and be executed.
 var allowedCommands = map[string]bool{
 	// Connection & authentication.
-	ftp.CmdUSER: true,
-	ftp.CmdPASS: true,
-	ftp.CmdQUIT: true,
-	ftp.CmdNOOP: true,
+	ftp.CmdUser:     true,
+	ftp.CmdPassword: true,
+	ftp.CmdQuit:     true,
+	ftp.CmdNoop:     true,
 	// Navigation & transfer parameters.
-	ftp.CmdPWD:  true,
-	ftp.CmdXPWD: true,
-	ftp.CmdCWD:  true,
-	ftp.CmdXCWD: true,
-	ftp.CmdCDUP: true,
-	ftp.CmdTYPE: true,
-	ftp.CmdMODE: true,
-	ftp.CmdSTRU: true,
+	ftp.CmdPrintWorkingDirectory:   true,
+	ftp.CmdXPrintWorkingDirectory:  true,
+	ftp.CmdChangeWorkingDirectory:  true,
+	ftp.CmdXChangeWorkingDirectory: true,
+	ftp.CmdChangeToParentDirectory: true,
+	ftp.CmdType:                    true,
+	ftp.CmdMode:                    true,
+	ftp.CmdStructure:               true,
 	// Information.
-	ftp.CmdSYST: true,
-	ftp.CmdFEAT: true,
-	ftp.CmdHELP: true,
-	ftp.CmdOPTS: true,
-	ftp.CmdSIZE: true,
-	ftp.CmdMDTM: true,
+	ftp.CmdSystem:           true,
+	ftp.CmdFeatures:         true,
+	ftp.CmdHelp:             true,
+	ftp.CmdOptions:          true,
+	ftp.CmdSize:             true,
+	ftp.CmdModificationTime: true,
 	// Listing & retrieval.
-	ftp.CmdLIST: true,
-	ftp.CmdNLST: true,
-	ftp.CmdRETR: true,
+	ftp.CmdList:     true,
+	ftp.CmdNameList: true,
+	ftp.CmdRetrieve: true,
 	// Data connection setup.
-	ftp.CmdPORT: true,
-	ftp.CmdEPRT: true,
-	ftp.CmdLPRT: true,
-	ftp.CmdPASV: true,
-	ftp.CmdEPSV: true,
+	ftp.CmdPort:            true,
+	ftp.CmdExtendedPort:    true,
+	ftp.CmdLongPort:        true,
+	ftp.CmdPassive:         true,
+	ftp.CmdExtendedPassive: true,
 }
 
 // The sets below classify the commands that are NOT allowed. They exist only
@@ -78,23 +78,23 @@ var (
 	// mkdir/rmdir) or could be abused to do so (SITE, e.g. "SITE CHMOD").
 	// Rejected with 550 "Read-only file system".
 	writeCommands = map[string]bool{
-		ftp.CmdSTOR: true,
-		ftp.CmdAPPE: true,
-		ftp.CmdSTOU: true,
-		ftp.CmdDELE: true,
-		ftp.CmdRNFR: true,
-		ftp.CmdRNTO: true,
-		ftp.CmdMKD:  true,
-		ftp.CmdXMKD: true,
-		ftp.CmdRMD:  true,
-		ftp.CmdXRMD: true,
-		ftp.CmdSITE: true,
+		ftp.CmdStore:            true,
+		ftp.CmdAppend:           true,
+		ftp.CmdStoreUnique:      true,
+		ftp.CmdDelete:           true,
+		ftp.CmdRenameFrom:       true,
+		ftp.CmdRenameTo:         true,
+		ftp.CmdMakeDirectory:    true,
+		ftp.CmdXMakeDirectory:   true,
+		ftp.CmdRemoveDirectory:  true,
+		ftp.CmdXRemoveDirectory: true,
+		ftp.CmdSite:             true,
 	}
 	// tlsCommands are rejected with 502 "TLS not supported" (plain FTP only).
 	tlsCommands = map[string]bool{
-		ftp.CmdAUTH: true,
-		ftp.CmdPROT: true,
-		ftp.CmdPBSZ: true,
+		ftp.CmdAuth:                 true,
+		ftp.CmdProtection:           true,
+		ftp.CmdProtectionBufferSize: true,
 	}
 	// notImplementedCommands are recognized but not implemented. 502 (not
 	// 500) is essential here: 500 means "command unrecognized" and breaks
@@ -102,16 +102,16 @@ var (
 	// tries EPSV -> PASV -> LPSV and EPRT -> PORT -> LPRT), while 502 tells
 	// them to fall back to a supported command.
 	notImplementedCommands = map[string]bool{
-		ftp.CmdMLSD: true,
-		ftp.CmdMLST: true,
-		ftp.CmdREST: true,
-		ftp.CmdLPSV: true,
-		ftp.CmdSTAT: true,
-		ftp.CmdABOR: true,
-		ftp.CmdALLO: true,
-		ftp.CmdACCT: true,
-		ftp.CmdSMNT: true,
-		ftp.CmdREIN: true,
+		ftp.CmdMlsd:           true,
+		ftp.CmdMlst:           true,
+		ftp.CmdRestart:        true,
+		ftp.CmdLongPassive:    true,
+		ftp.CmdStatus:         true,
+		ftp.CmdAbort:          true,
+		ftp.CmdAllocate:       true,
+		ftp.CmdAccount:        true,
+		ftp.CmdStructureMount: true,
+		ftp.CmdReinitialize:   true,
 	}
 )
 
@@ -144,61 +144,61 @@ func (s *Session) handleCommand(cmd ftp.Command) {
 
 	switch cmd.Name {
 	// Connection & authentication
-	case ftp.CmdUSER:
+	case ftp.CmdUser:
 		s.cmdUser(cmd.Arg)
-	case ftp.CmdPASS:
+	case ftp.CmdPassword:
 		s.cmdPass()
-	case ftp.CmdQUIT:
+	case ftp.CmdQuit:
 		s.cmdQuit()
-	case ftp.CmdNOOP:
+	case ftp.CmdNoop:
 		s.reply(ftp.R200CommandOK, "NOOP ok")
 
 	// Navigation
-	case ftp.CmdPWD, ftp.CmdXPWD:
+	case ftp.CmdPrintWorkingDirectory, ftp.CmdXPrintWorkingDirectory:
 		s.cmdPwd()
-	case ftp.CmdCWD, ftp.CmdXCWD:
+	case ftp.CmdChangeWorkingDirectory, ftp.CmdXChangeWorkingDirectory:
 		s.cmdCwd(cmd.Arg)
-	case ftp.CmdCDUP:
+	case ftp.CmdChangeToParentDirectory:
 		s.cmdCdup()
-	case ftp.CmdTYPE:
+	case ftp.CmdType:
 		s.cmdType(cmd.Arg)
-	case ftp.CmdMODE:
+	case ftp.CmdMode:
 		s.cmdMode(cmd.Arg)
-	case ftp.CmdSTRU:
+	case ftp.CmdStructure:
 		s.cmdStru(cmd.Arg)
 
 	// Information
-	case ftp.CmdSYST:
+	case ftp.CmdSystem:
 		s.reply(ftp.R215SystemType, "UNIX Type: L8")
-	case ftp.CmdFEAT:
+	case ftp.CmdFeatures:
 		s.cmdFeat()
-	case ftp.CmdHELP:
+	case ftp.CmdHelp:
 		s.cmdHelp()
-	case ftp.CmdSIZE:
+	case ftp.CmdSize:
 		s.cmdSize(cmd.Arg)
-	case ftp.CmdMDTM:
+	case ftp.CmdModificationTime:
 		s.cmdMdtm(cmd.Arg)
-	case ftp.CmdOPTS:
+	case ftp.CmdOptions:
 		s.cmdOpts(cmd.Arg)
 
 	// Listing & retrieval
-	case ftp.CmdLIST:
+	case ftp.CmdList:
 		s.cmdList(cmd.Arg, false)
-	case ftp.CmdNLST:
+	case ftp.CmdNameList:
 		s.cmdList(cmd.Arg, true)
-	case ftp.CmdRETR:
+	case ftp.CmdRetrieve:
 		s.cmdRetr(cmd.Arg)
 
 	// Data connection setup
-	case ftp.CmdPORT:
+	case ftp.CmdPort:
 		s.cmdPort(cmd.Arg)
-	case ftp.CmdEPRT:
+	case ftp.CmdExtendedPort:
 		s.cmdEprt(cmd.Arg)
-	case ftp.CmdLPRT:
+	case ftp.CmdLongPort:
 		s.cmdLprt(cmd.Arg)
-	case ftp.CmdPASV:
+	case ftp.CmdPassive:
 		s.cmdPasv()
-	case ftp.CmdEPSV:
+	case ftp.CmdExtendedPassive:
 		s.cmdEpsv()
 
 	default:
