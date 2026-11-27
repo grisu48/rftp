@@ -12,6 +12,7 @@ chroot: false               # requires root; the container runs unprivileged
 read_only_mount: false      # requires root + CAP_SYS_ADMIN (private mount namespace); the container runs unprivileged
 passive_enabled: true       # passive mode (PASV/EPSV) enabled by default; set false to disable
 bandwidth_limit: 0          # per-connection bandwidth limit in bytes/sec (0 = unlimited); e.g. "512KiB/s", "10MB/s"
+max_connections: 100        # global limit of parallel control connections (default 100; 0 = unlimited); data connections do not count
 log_level: info             # debug, info, warn, error
 # user/group are optional (default: the numeric IDs 65534/65534, so no
 # /etc/passwd or /etc/group is needed in this scratch image; a configured name

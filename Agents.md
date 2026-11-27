@@ -53,6 +53,8 @@ and `serve_dir` are required. `user`/`group` are optional and default to the
 predefined numeric IDs `65534`/`65534`; a configured value may be a name
 (e.g. `nobody`, resolved via the user database) or a numeric ID. Passive mode
 is enabled by default (`passive_enabled: true`); set it to `false` to disable.
+Parallel control connections are limited to 100 by default
+(`max_connections: 100`; set it to `0` for unlimited).
 
 ## Security model — non-negotiable
 
@@ -93,6 +95,10 @@ is enabled by default (`passive_enabled: true`); set it to `false` to disable.
 - **Bounded input**: command lines are capped at `maxLineLen` (8 KiB) using a
   bounded `bufio` buffer; overlong lines get `500 Command line too long` and
   the session continues.
+- **Bounded connections**: `max_connections` caps the number of parallel
+  **control** connections globally (default 100, 0 = unlimited); excess
+  connections get `421 Too many connections` and are closed. Data connections
+  never count against the limit.
 - **Plain FTP only**: `AUTH TLS`/`PROT`/`PBSZ` are rejected with
   `502 TLS not supported`.
 

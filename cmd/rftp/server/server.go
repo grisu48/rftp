@@ -4,10 +4,12 @@ package server
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"sync"
 
 	"github.com/grisu48/rftp/cmd/rftp/config"
+	"github.com/grisu48/rftp/cmd/rftp/ftp"
 	"github.com/grisu48/rftp/cmd/rftp/logger"
 )
 
@@ -17,6 +19,12 @@ type Server struct {
 	cfg  *config.Config
 	ln   net.Listener
 	pasv *PassiveManager
+
+	// connSlots is the global limit of parallel control connections: a
+	// buffered channel with one slot per allowed connection. It is nil when
+	// no limit is configured (max_connections: 0, unlimited). Only control
+	// connections acquire a slot; data connections never do.
+	connSlots chan struct{}
 
 	mu       sync.Mutex
 	sessions map[*Session]struct{}
@@ -32,11 +40,16 @@ func New(cfg *config.Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	var connSlots chan struct{}
+	if cfg.MaxConnections > 0 {
+		connSlots = make(chan struct{}, cfg.MaxConnections)
+	}
 	return &Server{
-		cfg:      cfg,
-		ln:       ln,
-		pasv:     NewPassiveManager(cfg.PassivePortMin, cfg.PassivePortMax),
-		sessions: make(map[*Session]struct{}),
+		cfg:       cfg,
+		ln:        ln,
+		pasv:      NewPassiveManager(cfg.PassivePortMin, cfg.PassivePortMax),
+		connSlots: connSlots,
+		sessions:  make(map[*Session]struct{}),
 	}, nil
 }
 
@@ -48,7 +61,7 @@ func (s *Server) Addr() net.Addr {
 // Serve runs the accept loop until the listener is closed (via Close) or a
 // fatal accept error occurs.
 func (s *Server) Serve() error {
-	logger.Info("FTP server listening addr=%s serve_dir=%s", s.ln.Addr().String(), s.cfg.ServeDir)
+	logger.Info("FTP server listening addr=%s serve_dir=%s max_connections=%d", s.ln.Addr().String(), s.cfg.ServeDir, s.cfg.MaxConnections)
 	for {
 		conn, err := s.ln.Accept()
 		if err != nil {
@@ -61,11 +74,45 @@ func (s *Server) Serve() error {
 			}
 			return err
 		}
+		// Enforce the global control-connection limit (max_connections).
+		// Only control connections are counted here; data connections
+		// (passive accepts and active dials in Session.openDataConn) never
+		// pass through this loop and never consume a slot.
+		if !s.acquireConnSlot() {
+			logger.Warn("connection rejected: too many connections remote=%s", conn.RemoteAddr())
+			fmt.Fprintf(conn, "%d Too many connections, closing control connection\r\n", ftp.R421ServiceUnavailable)
+			conn.Close()
+			continue
+		}
 		s.wg.Add(1)
 		go func() {
 			defer s.wg.Done()
+			defer s.releaseConnSlot()
 			s.handleConn(conn)
 		}()
+	}
+}
+
+// acquireConnSlot reserves one slot of the global control-connection limit.
+// It returns false immediately when the limit is reached; it never blocks,
+// so an over-limit connection is rejected instead of queueing.
+func (s *Server) acquireConnSlot() bool {
+	if s.connSlots == nil {
+		return true // no limit configured
+	}
+	select {
+	case s.connSlots <- struct{}{}:
+		return true
+	default:
+		return false
+	}
+}
+
+// releaseConnSlot frees the slot taken by a control connection when its
+// session ends.
+func (s *Server) releaseConnSlot() {
+	if s.connSlots != nil {
+		<-s.connSlots
 	}
 }
 

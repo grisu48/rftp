@@ -94,6 +94,11 @@ type Config struct {
 	// means unlimited.
 	BandwidthLimit Bandwidth `yaml:"bandwidth_limit"`
 
+	// MaxConnections is the global limit of parallel control connections.
+	// Data connections (passive or active) do NOT count against the limit.
+	// 0 means unlimited.
+	MaxConnections int `yaml:"max_connections"`
+
 	// ServeDir is the single directory that is served.
 	ServeDir string `yaml:"serve_dir"`
 
@@ -122,6 +127,11 @@ const (
 	DefaultGroup = "65534"
 )
 
+// DefaultMaxConnections is the default global limit of parallel control
+// connections used when max_connections is not configured. 0 disables the
+// limit (unlimited).
+const DefaultMaxConnections = 100
+
 // Default returns a Config populated with the default values.
 func Default() *Config {
 	return &Config{
@@ -130,6 +140,7 @@ func Default() *Config {
 		PassivePortMin: 40000,
 		PassivePortMax: 40100,
 		BandwidthLimit: 0, // unlimited
+		MaxConnections: DefaultMaxConnections,
 		User:           DefaultUser,
 		Group:          DefaultGroup,
 		Chroot:         true,
@@ -168,6 +179,7 @@ func applyEnv(cfg *Config, lookup func(name string) (value string, ok bool)) err
 		"passive_port_min": func(v string) error { return parseScalar(&cfg.PassivePortMin, v) },
 		"passive_port_max": func(v string) error { return parseScalar(&cfg.PassivePortMax, v) },
 		"bandwidth_limit":  func(v string) error { return parseScalar(&cfg.BandwidthLimit, v) },
+		"max_connections":  func(v string) error { return parseScalar(&cfg.MaxConnections, v) },
 		"chroot":           func(v string) error { return parseScalar(&cfg.Chroot, v) },
 		"read_only_mount":  func(v string) error { return parseScalar(&cfg.ReadOnlyMount, v) },
 	}
@@ -247,6 +259,7 @@ func (c *Config) EnvVars() []string {
 		EnvName("passive_port_min") + "=" + strconv.Itoa(c.PassivePortMin),
 		EnvName("passive_port_max") + "=" + strconv.Itoa(c.PassivePortMax),
 		EnvName("bandwidth_limit") + "=" + strconv.FormatInt(int64(c.BandwidthLimit), 10),
+		EnvName("max_connections") + "=" + strconv.Itoa(c.MaxConnections),
 		EnvName("serve_dir") + "=" + c.ServeDir,
 		EnvName("user") + "=" + c.User,
 		EnvName("group") + "=" + c.Group,
@@ -318,6 +331,10 @@ func (c *Config) Validate() error {
 
 	if c.BandwidthLimit < 0 {
 		return fmt.Errorf("bandwidth_limit must not be negative (got %d)", c.BandwidthLimit)
+	}
+
+	if c.MaxConnections < 0 {
+		return fmt.Errorf("max_connections must not be negative (got %d)", c.MaxConnections)
 	}
 
 	if c.PassiveEnabled {

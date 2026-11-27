@@ -36,6 +36,7 @@
 - [x] 4.4 Implement FTP command parser (line-based, CRLF handling)
 - [x] 4.5 Implement response writer (standard FTP response codes)
 - [x] 4.6 Reply `502 Command not implemented` (not 500) for recognized-but-unimplemented commands so standard clients fall back
+- [x] 4.7 Implement the global control-connection limit (`max_connections`): reject excess control connections with `421` and close; data connections never count against the limit
 
 ## 5. FTP Commands - Connection & Auth
 - [x] 5.1 Implement `USER` command (accept only "anonymous" or "ftp")
@@ -100,6 +101,7 @@
 - [x] 13.8 Integration test: IPv6 connectivity
 - [x] 13.9 Security test: verify write commands are rejected
 - [x] 13.10 Security test: verify path traversal is blocked
+- [x] 13.11 Integration test: global connection limit (421 when reached, slot freed on disconnect, data connections not counted)
 
 ## 14. Documentation
 - [x] 14.1 Create `README.md` with usage instructions

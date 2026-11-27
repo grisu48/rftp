@@ -14,6 +14,9 @@ passive_port_min: 40000     # Passive port range (only used when passive_enabled
 passive_port_max: 40100
 bandwidth_limit: 0          # Per-connection bandwidth limit in bytes/sec (0 = unlimited, default);
                             # human-readable values also work, e.g. "512KiB/s", "10MB/s"
+max_connections: 100        # Global limit of parallel control connections (default 100; 0 = unlimited);
+                            # data connections (PASV/PORT transfers) do not count against the limit;
+                            # excess control connections are rejected with 421
 
 # Security settings
 serve_dir: /srv/ftp         # The single directory to serve (chrooted into when run as root)

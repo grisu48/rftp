@@ -179,6 +179,35 @@ The server MUST support an optional `bandwidth_limit` configuration value cappin
 
 ---
 
+### Requirement: Global control-connection limit
+The server MUST support an optional `max_connections` configuration value limiting the number of parallel **control** connections. Data connections (passive or active) MUST NOT count against the limit. When unset, the default SHALL be `100`; an explicit `0` SHALL mean unlimited. When the limit is reached, new control connections SHALL be rejected immediately with `421` and closed; when a control connection ends, its slot SHALL be freed so new connections are accepted again. Negative or non-numeric values SHALL be rejected at startup.
+
+#### Scenario: Default limit is 100
+- **WHEN** no `max_connections` is configured
+- **THEN** at most 100 parallel control connections are accepted
+
+#### Scenario: Explicitly unlimited
+- **WHEN** `max_connections: 0` is configured
+- **THEN** any number of parallel control connections is accepted
+
+#### Scenario: Limit reached
+- **WHEN** `max_connections: 1` is configured and one control connection is active
+- **THEN** a second control connection receives `421 Too many connections` and is closed
+
+#### Scenario: Slot freed on disconnect
+- **WHEN** a control connection that counted against `max_connections` is closed
+- **THEN** a new control connection is accepted again
+
+#### Scenario: Data connections do not count
+- **WHEN** `max_connections` is reached and an admitted session opens a data connection (`PASV`/`EPSV` accept or `PORT`/`EPRT`/`LPRT` dial-out)
+- **THEN** the data connection is established and the transfer proceeds normally
+
+#### Scenario: Invalid limit rejected
+- **WHEN** `max_connections` is negative or non-numeric
+- **THEN** the server logs an error and exits with a non-zero status
+
+---
+
 ### Requirement: Active mode support
 The server MUST support active mode (`PORT`/`EPRT`) for data transfers.
 

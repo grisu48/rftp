@@ -1075,6 +1075,124 @@ func TestGracefulShutdown(t *testing.T) {
 	srv.Close()
 }
 
+// --- Global connection limit (spec: max_connections) ----------------------------
+
+// TestMaxConnectionsDefault verifies that the default configuration caps
+// parallel control connections at config.DefaultMaxConnections and that an
+// explicit max_connections: 0 disables the limit.
+func TestMaxConnectionsDefault(t *testing.T) {
+	srv, _ := startTestServer(t, nil)
+	if cap(srv.connSlots) != config.DefaultMaxConnections {
+		t.Errorf("default connSlots capacity = %d, want %d", cap(srv.connSlots), config.DefaultMaxConnections)
+	}
+
+	srv0, _ := startTestServer(t, func(cfg *config.Config) { cfg.MaxConnections = 0 })
+	if srv0.connSlots != nil {
+		t.Errorf("connSlots = %v, want nil (unlimited) for max_connections: 0", srv0.connSlots)
+	}
+}
+
+// TestMaxConnectionsLimit verifies the global limit of parallel control
+// connections: once max_connections is reached, further control connections
+// are rejected with 421 and closed; when a session ends, its slot is freed
+// and new connections are accepted again.
+func TestMaxConnectionsLimit(t *testing.T) {
+	_, addr := startTestServer(t, func(cfg *config.Config) {
+		cfg.MaxConnections = 1
+	})
+
+	// The first control connection is accepted.
+	c1 := dialTestClient(t, addr)
+	c1.login()
+
+	// The second control connection is rejected with 421 and closed.
+	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+	r := bufio.NewReader(conn)
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	line, err := r.ReadString('\n')
+	if err != nil {
+		t.Fatalf("read rejection reply: %v", err)
+	}
+	if !strings.HasPrefix(line, "421") {
+		t.Fatalf("reply = %q, want 421 ...", line)
+	}
+	if _, err := r.ReadString('\n'); err == nil {
+		t.Fatal("expected connection to be closed after 421")
+	}
+
+	// After the first client disconnects, its slot is freed and a new
+	// control connection is accepted again (poll: the server notices the
+	// closed connection asynchronously).
+	c1.conn.Close()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		conn2, err := net.DialTimeout("tcp", addr, time.Second)
+		if err != nil {
+			t.Fatalf("dial after close: %v", err)
+		}
+		conn2.SetReadDeadline(time.Now().Add(2 * time.Second))
+		line, err := bufio.NewReader(conn2).ReadString('\n')
+		conn2.Close()
+		if err == nil && strings.HasPrefix(line, "220") {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no new connection accepted after the first one closed (last reply %q, err %v)", line, err)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// TestMaxConnectionsDataConnectionsDoNotCount verifies that only control
+// connections count against max_connections: with the single slot taken, the
+// session can still open data connections (passive and active) and transfer,
+// while a second control connection is rejected.
+func TestMaxConnectionsDataConnectionsDoNotCount(t *testing.T) {
+	_, addr := startTestServer(t, func(cfg *config.Config) {
+		cfg.MaxConnections = 1
+		enablePassive(cfg)
+	})
+	c := dialTestClient(t, addr) // takes the only control slot
+	c.login()
+
+	// Passive data connection: accepted even though the limit is reached.
+	dc := setupPassiveMode(t, c)
+	c.cmd("RETR hello.txt")
+	c.expect(150)
+	if got := readDataAll(t, dc); got != "hello world\n" {
+		t.Errorf("RETR data (passive) = %q, want %q", got, "hello world\n")
+	}
+	c.expect(226, "Transfer complete")
+
+	// Active data connection: the server dials out; also not counted.
+	ln := setupActiveMode(t, c)
+	c.cmd("RETR hello.txt")
+	c.expect(150)
+	if got := readDataConn(t, c, ln); got != "hello world\n" {
+		t.Errorf("RETR data (active) = %q, want %q", got, "hello world\n")
+	}
+	c.expect(226, "Transfer complete")
+
+	// A second control connection is still rejected while the first lives.
+	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	line, err := bufio.NewReader(conn).ReadString('\n')
+	if err != nil {
+		t.Fatalf("read reply: %v", err)
+	}
+	if !strings.HasPrefix(line, "421") {
+		t.Fatalf("reply = %q, want 421", line)
+	}
+}
+
 // --- RFC 1639 LPRT and client fallback chains ----------------------------------
 //
 // Standard ftp clients walk fallback chains for the data connection:

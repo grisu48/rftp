@@ -165,6 +165,13 @@ unavailable (e.g. the classic `ftp` client over IPv6 skips `EPRT` after
 - Passive mode only opens ports on demand (one per data connection, from the configured `passive_port_min`–`passive_port_max` range), so the listening surface stays minimal
 - Operators who want active mode only can disable passive mode explicitly via `passive_enabled: false`
 
+### Decision: Global control-connection limit (`max_connections`)
+**What**: A global cap on the number of parallel **control** connections, default `100` (`max_connections: 0` disables the limit, i.e. unlimited). Excess control connections are rejected immediately with `421 Too many connections` and closed; a slot is freed when its session ends. Data connections (passive accepts and active dial-outs in `openDataConn`) never pass through the accept loop and never count against the limit.
+
+**Why**:
+- Bounds goroutines, file descriptors and memory against connection-flooding DoS: without a cap, any anonymous client can open thousands of control connections that each idle up to `idleTimeout`
+- Counting only control connections keeps admitted sessions fully functional: one control connection may still use passive/active data connections for transfers
+
 ### Decision: Logging to stdout/stderr only
 **What**: All logging goes to stdout (info/debug) and stderr (warnings/errors)
 

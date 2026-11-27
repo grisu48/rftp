@@ -85,6 +85,9 @@ func TestLoadAppliesDefaults(t *testing.T) {
 	if cfg.LogLevel != "info" {
 		t.Errorf("default LogLevel = %q", cfg.LogLevel)
 	}
+	if cfg.MaxConnections != DefaultMaxConnections {
+		t.Errorf("default MaxConnections = %d, want %d", cfg.MaxConnections, DefaultMaxConnections)
+	}
 }
 
 func TestLoadMissingFile(t *testing.T) {
@@ -270,6 +273,7 @@ func TestEnvVarsRoundTrip(t *testing.T) {
 	cfg.ReadOnlyMount = true
 	cfg.LogLevel = "debug"
 	cfg.BandwidthLimit = 10 * 1024 * 1024
+	cfg.MaxConnections = 42
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate: %v", err)
 	}
@@ -422,6 +426,55 @@ func TestValidateNegativeBandwidthLimit(t *testing.T) {
 	}
 }
 
+func TestLoadMaxConnections(t *testing.T) {
+	dir := t.TempDir()
+
+	// A bare number is a connection count.
+	path := writeTempConfig(t, "serve_dir: "+dir+"\nmax_connections: 100\n")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.MaxConnections != 100 {
+		t.Errorf("MaxConnections = %d, want 100", cfg.MaxConnections)
+	}
+
+	// Omitted means the default (DefaultMaxConnections).
+	path = writeTempConfig(t, "serve_dir: "+dir+"\n")
+	cfg, err = Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.MaxConnections != DefaultMaxConnections {
+		t.Errorf("default MaxConnections = %d, want %d", cfg.MaxConnections, DefaultMaxConnections)
+	}
+
+	// An explicit 0 means unlimited.
+	path = writeTempConfig(t, "serve_dir: "+dir+"\nmax_connections: 0\n")
+	cfg, err = Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.MaxConnections != 0 {
+		t.Errorf("MaxConnections = %d, want 0 (unlimited)", cfg.MaxConnections)
+	}
+
+	// Negative values are rejected at startup.
+	path = writeTempConfig(t, "serve_dir: "+dir+"\nmax_connections: -1\n")
+	if _, err := Load(path); err == nil {
+		t.Error("Load with max_connections: -1 must fail")
+	}
+}
+
+func TestValidateNegativeMaxConnections(t *testing.T) {
+	cfg := Default()
+	cfg.ServeDir = t.TempDir()
+	cfg.MaxConnections = -1
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "max_connections") {
+		t.Errorf("expected max_connections error, got: %v", err)
+	}
+}
+
 // envLookup returns an environment lookup function backed by the given map.
 func envLookup(env map[string]string) func(name string) (string, bool) {
 	return func(name string) (string, bool) {
@@ -436,6 +489,7 @@ func TestEnvName(t *testing.T) {
 		"serve_dir":       "RFTP_SERVE_DIR",
 		"passive_enabled": "RFTP_PASSIVE_ENABLED",
 		"bandwidth_limit": "RFTP_BANDWIDTH_LIMIT",
+		"max_connections": "RFTP_MAX_CONNECTIONS",
 		"read_only_mount": "RFTP_READ_ONLY_MOUNT",
 		"log_level":       "RFTP_LOG_LEVEL",
 	}
@@ -456,6 +510,7 @@ func TestLoadWithEnvOnly(t *testing.T) {
 		"RFTP_PASSIVE_PORT_MIN": "41000",
 		"RFTP_PASSIVE_PORT_MAX": "41050",
 		"RFTP_BANDWIDTH_LIMIT":  "10MiB/s",
+		"RFTP_MAX_CONNECTIONS":  "7",
 		"RFTP_CHROOT":           "false",
 		"RFTP_READ_ONLY_MOUNT":  "false",
 		"RFTP_LOG_LEVEL":        "debug",
@@ -480,6 +535,9 @@ func TestLoadWithEnvOnly(t *testing.T) {
 	}
 	if cfg.BandwidthLimit != 10*1024*1024 {
 		t.Errorf("BandwidthLimit = %d, want %d", cfg.BandwidthLimit, 10*1024*1024)
+	}
+	if cfg.MaxConnections != 7 {
+		t.Errorf("MaxConnections = %d, want 7", cfg.MaxConnections)
 	}
 	if cfg.Chroot || cfg.ReadOnlyMount {
 		t.Error("Chroot/ReadOnlyMount should be false")
@@ -555,6 +613,7 @@ func TestLoadWithEnvInvalidValues(t *testing.T) {
 	}
 	cases := map[string]string{
 		"RFTP_BANDWIDTH_LIMIT":  "fast",
+		"RFTP_MAX_CONNECTIONS":  "many",
 		"RFTP_PASSIVE_ENABLED":  "maybe",
 		"RFTP_PASSIVE_PORT_MIN": "abc",
 		"RFTP_CHROOT":           "2",

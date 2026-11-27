@@ -109,6 +109,8 @@ passive_port_min: 40000
 passive_port_max: 40100
 bandwidth_limit: 0          # per-connection limit in bytes/sec (0 = unlimited);
                             # human-readable values work too: "512KiB/s", "10MB/s"
+max_connections: 100        # global limit of parallel control connections (default 100;
+                            # 0 = unlimited); data connections do not count against the limit
 
 serve_dir: /srv/ftp         # directory to serve (chrooted when root)
 user: "65534"               # optional: privilege drop target — a name or numeric uid
@@ -169,6 +171,7 @@ file takes precedence over environment variables on a per-key basis; unknown
 | `RFTP_PASSIVE_PORT_MIN`| `passive_port_min`| `40000`            | First port of the passive port range (1–65535, ≤ `passive_port_max`; used when passive mode is enabled). |
 | `RFTP_PASSIVE_PORT_MAX`| `passive_port_max`| `40100`            | Last port of the passive port range (1–65535).                                                           |
 | `RFTP_BANDWIDTH_LIMIT` | `bandwidth_limit` | `0` (unlimited)    | Per-connection bandwidth cap in bytes/sec: a bare number or a human-readable value (`512KiB/s`, `10MB/s`). |
+| `RFTP_MAX_CONNECTIONS` | `max_connections` | `100`              | Global limit of parallel control connections (`0` = unlimited); data connections do not count. Excess control connections get `421` and are closed. |
 | `RFTP_SERVE_DIR`       | `serve_dir`       | — (required)       | The single directory to serve (chrooted into when run as root).                                         |
 | `RFTP_USER`            | `user`            | `"65534"`          | Privilege drop target: a name (resolved via the user database) or a numeric uid.                         |
 | `RFTP_GROUP`           | `group`           | `"65534"`          | Privilege drop target: a name (resolved via the group database) or a numeric gid.                       |
